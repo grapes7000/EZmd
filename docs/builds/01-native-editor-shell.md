@@ -2,7 +2,8 @@
 
 ## Status
 
-Ready for implementation.
+Implementation in review; local automated checks pass. Linux/macOS/Windows CI and on-screen
+manual acceptance remain pending.
 
 ## Purpose
 

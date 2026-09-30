@@ -1,6 +1,4 @@
 # Source Package
 
-No application feature code yet.
-
-Build 01 establishes the smallest launchable PySide6 Widgets application. The package name is
-`ezmd`; product behavior belongs in the active build contract before it belongs in source code.
+Build 01 provides a native PySide6 Widgets application shell, document file operations, the main
+window, and semantic visual profiles.
