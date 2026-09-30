@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+# POSIX convenience launcher. The real cross-platform gate lives in bin/check.py.
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$ROOT"
+exec uv run --locked python bin/check.py
