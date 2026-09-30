@@ -42,11 +42,7 @@ def check_secret_filenames() -> None:
         name = path.name.lower()
         if name == ".env.example":
             continue
-        if (
-            name == ".env"
-            or name.startswith(".env.")
-            or path.suffix.lower() in secret_suffixes
-        ):
+        if name == ".env" or name.startswith(".env.") or path.suffix.lower() in secret_suffixes:
             unsafe.append(raw_path)
 
     if unsafe:
