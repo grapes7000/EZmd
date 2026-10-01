@@ -2,10 +2,11 @@
 
 ## Status
 
-Product contract drafted and ready for owner review.
+Product contract approved for planning. Build 02 is formally complete and merged to `main`, with
+the repository health gate and Linux/macOS/Windows CI matrix passing.
 
-Build 03 must not enter OpenCode Plan mode until Build 02 has passed its remaining
-owner/cross-platform acceptance gates and is formally marked complete.
+Build 03 may now enter OpenCode Plan mode. Implementation still requires owner review and approval
+of the resulting plan before Build mode begins.
 
 ## Purpose
 
@@ -696,7 +697,7 @@ causing it before implementation begins.
 
 ## Definition of done
 
-- [ ] Build 02 has been formally accepted/marked complete before Build 03 implementation starts.
+- [x] Build 02 has been formally accepted/marked complete before Build 03 implementation starts.
 - [ ] Application launches.
 - [ ] Supported Build 02 formatting survives save/close/reopen through Markdown.
 - [ ] `.txt` import -> `.md` save behavior works without modifying the source `.txt`.
