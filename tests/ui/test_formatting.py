@@ -3,7 +3,7 @@
 from collections.abc import Iterator
 
 import pytest
-from PySide6.QtCore import QMimeData, Qt
+from PySide6.QtCore import QByteArray, QDataStream, QIODevice, QMimeData, Qt
 from PySide6.QtGui import (
     QFont,
     QKeySequence,
@@ -253,9 +253,26 @@ def test_new_heading_styles_text_typed_into_an_empty_block(window: MainWindow) -
 
 
 def test_heading_size_falls_back_when_a_font_has_no_usable_size(window: MainWindow) -> None:
-    font_without_size = QFont()
-    assert font_without_size.pointSizeF() <= 0
-    assert font_without_size.pixelSize() <= 0
+    data = QByteArray()
+    writer = QDataStream(data, QIODevice.OpenModeFlag.WriteOnly)
+    writer.setVersion(QDataStream.Version.Qt_4_0)
+    writer.writeQString("Sans Serif")
+    writer.writeDouble(-1.0)
+    writer.writeInt32(-1)
+    writer.writeUInt8(QFont.StyleHint.AnyStyle.value)
+    writer.writeUInt8(QFont.StyleStrategy.PreferDefault.value)
+    writer.writeUInt8(0)  # Legacy character set.
+    writer.writeUInt8(50)  # Qt 4's legacy normal font weight.
+    writer.writeUInt8(0)  # Style flags.
+    assert writer.status() == QDataStream.Status.Ok
+
+    font_without_size = QFont("Sans Serif", 12)
+    reader = QDataStream(data)
+    reader.setVersion(QDataStream.Version.Qt_4_0)
+    _ = reader >> font_without_size
+    assert reader.status() == QDataStream.Status.Ok
+    assert font_without_size.pointSizeF() == -1.0
+    assert font_without_size.pixelSize() == -1
     assert resolve_base_point_size((font_without_size,), window.editor.logicalDpiY()) > 0
 
 
