@@ -1,9 +1,11 @@
-"""Build 01 geometry/interaction profiles and a shared semantic system palette."""
+"""Geometry/interaction profiles and shared presentation values."""
 
 from dataclasses import dataclass
 
-from PySide6.QtGui import QPalette
-from PySide6.QtWidgets import QComboBox, QTextEdit, QToolBar, QVBoxLayout
+from PySide6.QtGui import QFont, QFontDatabase, QFontInfo, QPalette
+from PySide6.QtWidgets import QApplication, QComboBox, QTextEdit, QToolBar, QVBoxLayout
+
+from ezmd.ui.quote_editor import QuoteTextEdit
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,34 @@ PROFILES = {
     "Focus": VisualProfile(4, 4, 8, 28, 6, 4, 4, 10, 1, True),
 }
 DEFAULT_PROFILE = "Focus"
+HEADING_SCALES = (1.0, 1.6, 1.35, 1.15)
+HISTORY_GLYPH_SCALE = 1.5
+FALLBACK_POINT_SIZE = 12.0
+
+
+def _font_point_size(font: QFont | QFontInfo, dpi: int) -> float | None:
+    size = font.pointSizeF()
+    if size > 0:
+        return size
+    pixels = font.pixelSize()
+    return pixels * 72 / dpi if pixels > 0 and dpi > 0 else None
+
+
+def resolve_base_point_size(fonts: tuple[QFont | QFontInfo, ...], dpi: int) -> float:
+    system_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont)
+    for font in (*fonts, QApplication.font(), system_font):
+        size = _font_point_size(font, dpi)
+        if size is not None:
+            return size
+    return FALLBACK_POINT_SIZE
+
+
+def _base_point_size(editor: QTextEdit) -> float:
+    return resolve_base_point_size((editor.fontInfo(), editor.font()), editor.logicalDpiY())
+
+
+def heading_point_size(editor: QTextEdit, level: int) -> float:
+    return _base_point_size(editor) * HEADING_SCALES[level]
 
 
 @dataclass(frozen=True)
@@ -55,7 +85,7 @@ def system_colors(palette: QPalette) -> Colors:
 
 def apply_profile(
     toolbar: QToolBar,
-    editor: QTextEdit,
+    editor: QuoteTextEdit,
     content_layout: QVBoxLayout,
     selector: QComboBox,
     name: str,
@@ -65,6 +95,7 @@ def apply_profile(
     margin = profile.content_margin
     content_layout.setContentsMargins(margin, margin, margin, margin)
     resting_border = "transparent" if profile.quiet_buttons_at_rest else colors.border
+    history_size = _base_point_size(editor) * HISTORY_GLYPH_SCALE
     toolbar.setStyleSheet(
         f"QToolBar {{ spacing: {profile.toolbar_gap}px; padding: {profile.toolbar_padding}px; "
         f"background: {colors.surface}; border-bottom: {profile.border_width}px solid "
@@ -80,6 +111,7 @@ def apply_profile(
         f"QToolBar QToolButton:checked {{ background: {colors.hover}; "
         f"border-color: {colors.focus}; }}"
         f"QToolBar QToolButton:disabled {{ color: {colors.disabled}; }}"
+        f"QToolBar QToolButton#historyButton {{ font-size: {history_size}pt; }}"
     )
     selector.setStyleSheet(
         f"QComboBox {{ min-height: {profile.control_height}px; "
@@ -93,3 +125,4 @@ def apply_profile(
         f"border: {profile.border_width}px solid {colors.border}; "
         f"border-radius: {profile.editor_radius}px; padding: {profile.editor_padding}px; }}"
     )
+    editor.set_quote_rail(colors.border, profile.border_width, profile.control_padding)

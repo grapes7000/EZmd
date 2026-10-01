@@ -2,7 +2,26 @@
 
 ## Status
 
-Ready for OpenCode Plan mode.
+Implemented locally. The application launches, the Linux repository health gate passes, and the
+Build 02 UI/integration tests pass. The Linux/macOS/Windows CI matrix and owner acceptance remain
+pending.
+
+Owner-acceptance follow-up implemented locally: empty H1/H2/H3 blocks retain heading-sized typing
+after deletion; Bullet/Numbered use normalized top-level indentation; Quote and lists replace one
+another without changing heading level; and the toolbar's Strikethrough glyph uses a struck font.
+Formatting-state synchronization now checks all three character toggles in one selected-range pass
+and avoids an extra post-command refresh.
+
+Final local Build 02 behavior:
+
+- Quote, Bullet, and Numbered are mutually exclusive top-level structures. Conversions normalize
+  residual indentation and preserve the independent Paragraph/H1/H2/H3 block style.
+- Heading point size is applied to both text fragments and Qt's block character format, which
+  supplies native list-marker typography and empty-heading typing after deletion.
+- The Strikethrough toolbar control displays a visibly struck `S`.
+- A quote uses `QTextFormat.Property.BlockQuoteLevel = 1` as its semantic state and a thin left
+  hairline painted only in the editor viewport. The rail adds no document characters or formats;
+  Build 03 Markdown serialization must read `BlockQuoteLevel`, never the visual rail.
 
 ## Purpose
 
@@ -504,21 +523,21 @@ Expected shape, not a rigid quota:
 
 ## Definition of done
 
-- [ ] Application launches.
-- [ ] Settled File/Edit/View placement is implemented.
-- [ ] Toolbar matches the settled command groups/order.
-- [ ] Approved character/block/list/quote formatting works.
-- [ ] Toolbar state follows cursor/selection without mutating document state.
-- [ ] Standard Bold/Italic/Undo/Redo shortcuts work cross-platform through Qt.
-- [ ] Existing Build 01 behaviors/tests remain green.
-- [ ] Focused checks pass during implementation.
-- [ ] `uv run --locked python bin/check.py` passes locally.
+- [x] Application launches.
+- [x] Settled File/Edit/View placement is implemented.
+- [x] Toolbar matches the settled command groups/order.
+- [x] Approved character/block/list/quote formatting works.
+- [x] Toolbar state follows cursor/selection without mutating document state.
+- [x] Standard Bold/Italic/Undo/Redo shortcuts work cross-platform through Qt.
+- [x] Existing Build 01 behaviors/tests remain green.
+- [x] Focused checks pass during implementation.
+- [x] `uv run --locked python bin/check.py` passes locally.
 - [ ] Linux, macOS, and Windows CI passes.
-- [ ] No unrelated file changed.
-- [ ] No unauthorized dependency was added.
-- [ ] No later/deferred feature was implemented early.
-- [ ] Documentation matches implemented behavior.
-- [ ] Complexity review completed.
+- [x] No unrelated file changed.
+- [x] No unauthorized dependency was added.
+- [x] No later/deferred feature was implemented early.
+- [x] Documentation matches implemented behavior.
+- [x] Complexity review completed.
 
 ## Owner review questions
 
