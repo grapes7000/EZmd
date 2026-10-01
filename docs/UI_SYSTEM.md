@@ -123,23 +123,61 @@ Working geometry/interaction rules:
 - pressed/checked states must be distinguishable without large filled pills.
 
 `Focus` is the provisional default only so the project has a starting point. The presence of the
-profile switcher means changing the default later is cheap and expected.
+profile selector means changing the default later is cheap and expected.
 
-## Runtime profile switcher
+## Application menu and formatting-toolbar placement
 
-Build 01 includes a small runtime switcher for `Lab`, `QTemp`, and `Focus`.
+Build 02 establishes a clearer division between application commands and document-formatting
+commands while keeping normal native window chrome.
 
-Requirements:
+The normal top application menu area contains:
+
+- `File` → New, Open, Save;
+- `Edit` → Undo, Redo;
+- `View` → Visual Profile → Lab / QTemp / Focus.
+
+Do not move these commands into a custom title bar. A native title bar plus normal application
+menu bar remains the accepted cross-platform shell.
+
+The formatting toolbar is reserved for writing/editing controls. Its settled Build 02 grouping is:
+
+```text
+↶ ↷ | Paragraph ▾ | B I S | • 1. Quote
+```
+
+Meaning:
+
+1. Undo / Redo;
+2. paragraph style (Paragraph/H1/H2/H3);
+3. Bold / Italic / Strikethrough;
+4. Bulleted list / Numbered list / Blockquote.
+
+Use familiar curved-arrow visuals for Undo/Redo and preserve clear accessible names/tooltips.
+No third-party icon pack is required merely for these controls.
+
+New/Open/Save and the visual-profile choice do not occupy formatting-toolbar space from Build 02
+onward.
+
+## Runtime profile selection
+
+Build 01 introduced live switching for `Lab`, `QTemp`, and `Focus` through a compact toolbar
+selector so the geometry profiles could be compared quickly.
+
+From Build 02 onward, profile selection moves to `View > Visual Profile` to keep the formatting
+bar focused on document editing.
+
+Requirements remain:
 
 - switching applies immediately without restarting;
-- switching must not change document text, cursor position, selection, undo history, or current
-  file;
-- the switcher is deliberately simple and local; it does not justify a plugin/theme marketplace;
+- switching must not change document text, rich formatting, cursor position, selection, undo
+  history, or current file;
+- the selection UI is deliberately simple and local; it does not justify a plugin/theme
+  marketplace;
 - persistence across restarts is deferred unless a later build explicitly adds settings
   persistence.
 
-A compact toolbar selector or a `View` menu choice is acceptable. If both are added, they must
-share the same underlying action/state rather than duplicate profile logic.
+If profile selection is represented in more than one place in a future build, all representations
+must share the same underlying action/state rather than duplicate profile logic.
 
 ## Styling boundaries
 
@@ -165,6 +203,8 @@ Low chrome must not mean low discoverability.
 - Hover-only decoration may supplement, but must not replace, focus/checked/disabled states.
 - Text contrast must remain readable.
 - Controls should remain usable at common desktop scaling factors.
+- Familiar commands such as Undo/Redo should retain recognizable visual language rather than
+  requiring the user to relearn common desktop conventions.
 
 ## What is deliberately deferred
 
@@ -176,4 +216,7 @@ Low chrome must not mean low discoverability.
 - animated transitions;
 - custom title bars/window chrome;
 - shadow/depth effects beyond the semantic placeholder;
-- icon library selection.
+- icon library selection;
+- user-customizable toolbar layout.
+
+Deferred UI ideas and their current rationale are recorded in `docs/FUTURE_IDEAS.md`.
