@@ -70,7 +70,7 @@ def test_window_has_a_usable_editor_and_typing_marks_it_modified(
     assert window.editor.toPlainText() == ""
     assert window.current_path is None
     assert not window.editor.document().isModified()
-    assert window.profile_selector.currentText() == DEFAULT_PROFILE
+    assert window.profile_actions[DEFAULT_PROFILE].isChecked()
 
     type_text(window, "Draft")
     assert window.editor.toPlainText() == "Draft"
@@ -78,7 +78,7 @@ def test_window_has_a_usable_editor_and_typing_marks_it_modified(
     assert "Untitled *" in window.windowTitle()
 
 
-def test_toolbar_and_menus_share_actions_with_native_undo_history(
+def test_menus_and_toolbar_place_actions_and_share_native_undo_history(
     qtbot: QtBot, window: MainWindow
 ) -> None:
     menu_actions = [
@@ -92,8 +92,22 @@ def test_toolbar_and_menus_share_actions_with_native_undo_history(
         (window.redo_action, QKeySequence.StandardKey.Redo),
     ):
         assert action in menu_actions
-        assert window.toolbar.widgetForAction(action) is not None
         assert action.shortcut() == QKeySequence(standard)
+    for action in (window.new_action, window.open_action, window.save_action):
+        assert window.toolbar.widgetForAction(action) is None
+    for action in (window.undo_action, window.redo_action):
+        assert window.toolbar.widgetForAction(action) is not None
+    for name, action in window.profile_actions.items():
+        assert action.text() == name
+        assert action in menu_actions
+        assert window.toolbar.widgetForAction(action) is None
+    menus = {menu.title().replace("&", ""): menu for menu in window.menuBar().findChildren(QMenu)}
+    for name, expected in (
+        ("File", (window.new_action, window.open_action, window.save_action)),
+        ("Edit", (window.undo_action, window.redo_action)),
+    ):
+        assert all(action in menus[name].actions() for action in expected)
+    assert "Visual Profile" in [action.text() for action in menus["View"].actions()]
 
     type_text(window, "Hello")
     window.undo_action.trigger()
@@ -407,8 +421,8 @@ def test_live_profiles_keep_document_cursor_selection_undo_and_path(
     document = window.editor.document()
     undo_steps = document.availableUndoSteps()
     for name in ("Lab", "QTemp", "Focus"):
-        window.profile_selector.setCurrentText(name)
-        assert window.profile_selector.currentText() == name
+        window.profile_actions[name].trigger()
+        assert window.profile_actions[name].isChecked()
         margin = PROFILES[name].content_margin
         assert window.content_layout.contentsMargins().left() == margin
         assert window.content_layout.contentsMargins().right() == margin
@@ -427,7 +441,7 @@ def test_live_profiles_keep_document_cursor_selection_undo_and_path(
     assert document.isRedoAvailable()
     modified = document.isModified()
     for name in ("QTemp", "Lab", "Focus"):
-        window.profile_selector.setCurrentText(name)
+        window.profile_actions[name].trigger()
         assert window.editor.toPlainText() == after_undo
         assert document.isModified() == modified
         assert document.availableUndoSteps() == undo_steps
@@ -444,16 +458,19 @@ def test_focus_buttons_are_quiet_at_rest_while_other_profiles_retain_boundaries(
     assert not PROFILES["QTemp"].quiet_buttons_at_rest
 
     for name in ("Lab", "QTemp", "Focus"):
-        window.profile_selector.setCurrentText(name)
-        assert window.profile_selector.currentText() == name
+        window.profile_actions[name].trigger()
+        assert window.profile_actions[name].isChecked()
         assert not window.editor.document().isModified()
         assert window.editor.document().availableUndoSteps() == 0
         for action in (
-            window.new_action,
-            window.open_action,
-            window.save_action,
             window.undo_action,
             window.redo_action,
+            window.bold_action,
+            window.italic_action,
+            window.strike_action,
+            window.bullet_action,
+            window.numbered_action,
+            window.quote_action,
         ):
             button = window.toolbar.widgetForAction(action)
             assert isinstance(button, QToolButton)
