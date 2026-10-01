@@ -13,8 +13,8 @@ makes normal writing noticeably slower or a familiar interaction confusing is no
 | Build | Status | Slice | Main result |
 |---|---|---|---|
 | 01 | Complete | Native editor shell | Cross-platform Qt Widgets editor with safe basic file actions and live visual profiles |
-| 02 | Active — ready for Plan mode | Formatting toolbar | Familiar Word-like formatting controls |
-| 03 | Future | Markdown round-trip | Open/save the supported rich-document subset as predictable Markdown |
+| 02 | Active | Formatting toolbar | Familiar Word-like formatting controls |
+| 03 | Contract drafted — blocked on Build 02 acceptance | Markdown round-trip | Open/save the supported rich-document subset as predictable Markdown |
 | 04 | Future | Document sidebar | Browse folders and notes |
 | 05 | Future | Full-text search | Fast search across note contents |
 | 06 | Future | Fuzzy Quick Open | Instant keyboard-driven note opening |
@@ -30,6 +30,17 @@ Optional semantic/embedding work is outside the first twelve builds.
 `docs/FUTURE_IDEAS.md` records deferred product ideas, rationale, and open questions so they do not
 live only in conversation history. That document is context, **not implementation authorization**.
 An idea must be promoted into a reviewed numbered-build contract before an agent may implement it.
+
+## Current activation gate
+
+Build 03's product contract may be reviewed while Build 02 is still being finished and accepted.
+Do not send Build 03 to OpenCode Plan/Build mode until Build 02 is formally complete.
+
+After Build 02 acceptance:
+
+- mark Build 02 `Complete`;
+- mark Build 03 `Active — ready for Plan mode`;
+- keep later builds `Future`.
 
 ## Build discipline
 
