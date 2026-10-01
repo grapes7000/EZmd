@@ -2,17 +2,16 @@
 
 ## Status
 
-Implemented locally. The application launches, the Linux repository health gate passes, and the
-Build 02 UI/integration tests pass. The Linux/macOS/Windows CI matrix and owner acceptance remain
-pending.
+Complete. Build 02 is merged to `main`. The repository health gate passes, the Linux/macOS/Windows
+CI matrix passes, and the owner accepted the slice. Build 03 may proceed to OpenCode Plan mode.
 
-Owner-acceptance follow-up implemented locally: empty H1/H2/H3 blocks retain heading-sized typing
-after deletion; Bullet/Numbered use normalized top-level indentation; Quote and lists replace one
-another without changing heading level; and the toolbar's Strikethrough glyph uses a struck font.
-Formatting-state synchronization now checks all three character toggles in one selected-range pass
-and avoids an extra post-command refresh.
+Owner-acceptance follow-up included: empty H1/H2/H3 blocks retain heading-sized typing after
+deletion; Bullet/Numbered use normalized top-level indentation; Quote and lists replace one another
+without changing heading level; and the toolbar's Strikethrough glyph uses a struck font.
+Formatting-state synchronization checks all three character toggles in one selected-range pass and
+avoids an extra post-command refresh.
 
-Final local Build 02 behavior:
+Final Build 02 behavior:
 
 - Quote, Bullet, and Numbered are mutually exclusive top-level structures. Conversions normalize
   residual indentation and preserve the independent Paragraph/H1/H2/H3 block style.
@@ -532,7 +531,7 @@ Expected shape, not a rigid quota:
 - [x] Existing Build 01 behaviors/tests remain green.
 - [x] Focused checks pass during implementation.
 - [x] `uv run --locked python bin/check.py` passes locally.
-- [ ] Linux, macOS, and Windows CI passes.
+- [x] Linux, macOS, and Windows CI passes.
 - [x] No unrelated file changed.
 - [x] No unauthorized dependency was added.
 - [x] No later/deferred feature was implemented early.
