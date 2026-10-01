@@ -187,7 +187,7 @@ def test_save_writes_before_close(
     save_to(monkeypatch, str(path))
     choose_prompt(QMessageBox.StandardButton.Save)
     assert window.close()
-    assert path.read_text(encoding="utf-8") == "Important"
+    assert path.read_text(encoding="utf-8") == "Important\n"
 
 
 def test_discard_allows_close(qtbot: QtBot, window: MainWindow) -> None:
@@ -211,7 +211,7 @@ def test_discard_and_save_choices_only_proceed_when_allowed(
     save_to(monkeypatch, str(path))
     choose_prompt(QMessageBox.StandardButton.Save)
     window.new_action.trigger()
-    assert path.read_text(encoding="utf-8") == "Keep"
+    assert path.read_text(encoding="utf-8") == "Keep\n"
     assert window.editor.toPlainText() == ""
     assert window.current_path is None
 
@@ -230,7 +230,7 @@ def test_first_save_and_later_save_use_same_unicode_path(
     window.editor.insertPlainText("é")
     save_to(monkeypatch, str(path))
     window.save_action.trigger()
-    assert path.read_bytes() == "Café".encode()
+    assert path.read_bytes() == "Café\n".encode()
     assert window.current_path == path
     assert not window.editor.document().isModified()
     assert path.name in window.windowTitle()
@@ -242,7 +242,7 @@ def test_first_save_and_later_save_use_same_unicode_path(
 
     monkeypatch.setattr(QFileDialog, "getSaveFileName", unexpected_picker)
     window.save_action.trigger()
-    assert path.read_text(encoding="utf-8") == "Café encore"
+    assert path.read_text(encoding="utf-8") == "Café encore\n"
     assert not window.editor.document().isModified()
 
 
@@ -258,14 +258,15 @@ def test_cancel_save_destination_leaves_document_and_disk_unchanged(
     assert list(tmp_path.iterdir()) == []
 
 
-def test_open_utf8_file_loads_plain_text_path_and_clean_state(
+def test_open_utf8_markdown_loads_visual_heading_path_and_clean_state(
     qtbot: QtBot, window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "note 文書.markdown"
     path.write_text("# Café\n", encoding="utf-8")
     open_from(monkeypatch, str(path))
     window.open_action.trigger()
-    assert window.editor.toPlainText() == "# Café\n"
+    assert window.editor.toPlainText() == "Café"
+    assert window.editor.document().begin().blockFormat().headingLevel() == 1
     assert window.current_path == path
     assert not window.editor.document().isModified()
     assert path.name in window.windowTitle()
@@ -283,10 +284,202 @@ def test_open_after_saving_unsaved_work_keeps_the_old_file(
 
     choose_prompt(QMessageBox.StandardButton.Save)
     window.open_action.trigger()
-    assert old_path.read_text(encoding="utf-8") == "Old draft"
+    assert old_path.read_text(encoding="utf-8") == "Old draft\n"
     assert window.editor.toPlainText() == "Next document"
-    assert window.current_path == next_path
-    assert not window.editor.document().isModified()
+    assert window.current_path is None
+    assert window.suggested_save_path == next_path.with_suffix(".md")
+    assert window.editor.document().isModified()
+
+
+def test_txt_import_is_literal_and_first_save_defaults_to_markdown(
+    qtbot: QtBot, window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "import me 文書.txt"
+    source.write_text("# literal\n**stars**", encoding="utf-8")
+    open_from(monkeypatch, str(source))
+    window.open_action.trigger()
+    assert window.editor.toPlainText() == "# literal\n**stars**"
+    assert window.editor.document().begin().blockFormat().headingLevel() == 0
+    assert window.current_path is None
+    assert window.suggested_save_path == source.with_suffix(".md")
+    assert window.editor.document().isModified()
+
+    requested: list[str] = []
+
+    def selected(_parent: object, _title: str, initial: str, _filter: str) -> tuple[str, str]:
+        requested.append(initial)
+        return str(tmp_path / "imported"), ""
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", selected)
+    assert window.save_document()
+    destination = tmp_path / "imported.md"
+    assert requested == [str(source.with_suffix(".md"))]
+    assert destination.read_text(encoding="utf-8") == "\\# literal\n\n\\*\\*stars\\*\\*\n"
+    assert source.read_text(encoding="utf-8") == "# literal\n**stars**"
+    assert window.current_path == destination
+
+
+def test_empty_txt_import_and_empty_new_markdown_save_are_valid(
+    qtbot: QtBot, window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "empty.txt"
+    source.write_text("", encoding="utf-8")
+    open_from(monkeypatch, str(source))
+    window.open_document()
+    assert window.editor.toPlainText() == ""
+    assert window.current_path is None
+    assert window.editor.document().isModified()
+
+    destination = tmp_path / "empty note"
+    save_to(monkeypatch, str(destination))
+    assert window.save_document()
+    markdown_path = destination.with_suffix(".md")
+    assert markdown_path.read_bytes() == b""
+    assert window.current_path == markdown_path
+    assert source.read_bytes() == b""
+
+
+def test_conflicting_save_extension_is_refused(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    type_text(window, "Draft")
+    destination = tmp_path / "draft.txt"
+    save_to(monkeypatch, str(destination))
+    errors: list[str] = []
+    record_error(monkeypatch, errors)
+    assert not window.save_document()
+    assert errors and ".md or .markdown" in errors[0]
+    assert window.current_path is None
+    assert window.editor.document().isModified()
+    assert not destination.exists()
+
+
+def test_unsupported_markdown_open_preserves_all_current_state(
+    qtbot: QtBot, window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    current = tmp_path / "current.md"
+    current.write_text("Current", encoding="utf-8")
+    open_from(monkeypatch, str(current))
+    window.open_action.trigger()
+    window.editor.moveCursor(QTextCursor.MoveOperation.End)
+    type_text(window, " edit")
+    cursor = window.editor.textCursor()
+    cursor.setPosition(0)
+    cursor.setPosition(7, QTextCursor.MoveMode.KeepAnchor)
+    window.editor.setTextCursor(cursor)
+    window.bold_action.trigger()
+    cursor = window.editor.textCursor()
+    cursor.setPosition(1)
+    cursor.setPosition(4, QTextCursor.MoveMode.KeepAnchor)
+    window.editor.setTextCursor(cursor)
+    document = window.editor.document()
+    before = (
+        window.editor.toPlainText(),
+        window.current_path,
+        document.isModified(),
+        document.availableUndoSteps(),
+        document.isRedoAvailable(),
+        cursor.anchor(),
+        cursor.position(),
+        document.begin().begin().fragment().charFormat().fontWeight(),
+    )
+    unsupported = tmp_path / "unsupported.md"
+    unsupported.write_text("[link](target)\n", encoding="utf-8")
+    open_from(monkeypatch, str(unsupported))
+    errors: list[str] = []
+    record_error(monkeypatch, errors)
+    choose_prompt(QMessageBox.StandardButton.Discard)
+    window.open_action.trigger()
+    current_cursor = window.editor.textCursor()
+    assert errors and "Links and images" in errors[0]
+    assert (
+        window.editor.toPlainText(),
+        window.current_path,
+        document.isModified(),
+        document.availableUndoSteps(),
+        document.isRedoAvailable(),
+        current_cursor.anchor(),
+        current_cursor.position(),
+        document.begin().begin().fragment().charFormat().fontWeight(),
+    ) == before
+    assert unsupported.read_text(encoding="utf-8") == "[link](target)\n"
+
+
+def test_save_preserves_selection_formatting_and_undo_history(
+    qtbot: QtBot, window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window.editor.setPlainText("Formatted text")
+    cursor = window.editor.textCursor()
+    cursor.setPosition(0)
+    cursor.setPosition(9, QTextCursor.MoveMode.KeepAnchor)
+    window.editor.setTextCursor(cursor)
+    window.bold_action.trigger()
+    cursor.setPosition(8)
+    cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+    window.editor.setTextCursor(cursor)
+    document = window.editor.document()
+    before = (
+        cursor.anchor(),
+        cursor.position(),
+        document.availableUndoSteps(),
+        document.isRedoAvailable(),
+        document.begin().begin().fragment().charFormat().fontWeight(),
+    )
+    path = tmp_path / "selection.md"
+    save_to(monkeypatch, str(path))
+    assert window.save_document()
+    cursor = window.editor.textCursor()
+    assert (
+        cursor.anchor(),
+        cursor.position(),
+        document.availableUndoSteps(),
+        document.isRedoAvailable(),
+        document.begin().begin().fragment().charFormat().fontWeight(),
+    ) == before
+    assert not document.isModified()
+
+
+def test_serialization_failure_keeps_dirty_document_and_path(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "existing.md"
+    path.write_text("Previous\n", encoding="utf-8")
+    open_from(monkeypatch, str(path))
+    window.open_document()
+    type_text(window, " edit")
+    document = window.editor.document()
+    before = (window.editor.toPlainText(), document.availableUndoSteps())
+
+    def failed_serialization(_document: object) -> str:
+        from ezmd.core.markdown import MarkdownError
+
+        raise MarkdownError("unsupported document state")
+
+    monkeypatch.setattr("ezmd.ui.main_window.serialize_markdown", failed_serialization)
+    errors: list[str] = []
+    record_error(monkeypatch, errors)
+    assert not window.save_document()
+    assert errors and "unsupported document state" in errors[0]
+    assert (window.editor.toPlainText(), document.availableUndoSteps()) == before
+    assert window.current_path == path
+    assert document.isModified()
+    assert path.read_text(encoding="utf-8") == "Previous\n"
+
+
+def test_normal_editing_and_profile_switching_do_not_run_markdown_conversion(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unexpected(*_args: object) -> object:
+        pytest.fail("Markdown conversion ran outside Open or Save")
+
+    monkeypatch.setattr("ezmd.ui.main_window.parse_markdown", unexpected)
+    monkeypatch.setattr("ezmd.ui.main_window.serialize_markdown", unexpected)
+    type_text(window, "ordinary typing")
+    window.editor.moveCursor(QTextCursor.MoveOperation.Start)
+    window.editor.moveCursor(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+    window.bold_action.trigger()
+    for name in ("Lab", "QTemp", "Focus"):
+        window.profile_actions[name].trigger()
 
 
 def test_open_after_discard_replaces_unsaved_work_without_saving_it(

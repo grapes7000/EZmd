@@ -9,6 +9,7 @@ from PySide6.QtGui import (
     QActionGroup,
     QCloseEvent,
     QKeySequence,
+    QTextDocument,
     QTextListFormat,
 )
 from PySide6.QtWidgets import (
@@ -23,6 +24,12 @@ from PySide6.QtWidgets import (
 )
 
 from ezmd.core.files import read_text, write_text
+from ezmd.core.markdown import (
+    MarkdownError,
+    parse_markdown,
+    plain_text_document,
+    serialize_markdown,
+)
 from ezmd.ui import formatting
 from ezmd.ui.quote_editor import QuoteTextEdit
 from ezmd.ui.visual_profiles import (
@@ -38,6 +45,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.current_path: Path | None = None
+        self.suggested_save_path: Path | None = None
         self.editor = QuoteTextEdit(self)
         self.editor.setAcceptRichText(False)
         self.editor.setAutoFormatting(QuoteTextEdit.AutoFormattingFlag.AutoNone)
@@ -86,10 +94,7 @@ class MainWindow(QMainWindow):
 
         self.undo_action.setEnabled(False)
         self.redo_action.setEnabled(False)
-        document = self.editor.document()
-        document.undoAvailable.connect(self.undo_action.setEnabled)
-        document.redoAvailable.connect(self.redo_action.setEnabled)
-        document.modificationChanged.connect(self._update_title)
+        self._connect_document(self.editor.document())
 
         for action, glyph in ((self.undo_action, "↶"), (self.redo_action, "↷")):
             action.setIconText(glyph)
@@ -207,6 +212,19 @@ class MainWindow(QMainWindow):
         modified = self.editor.document().isModified()
         self.setWindowTitle(f"{name}{' *' if modified else ''} — EZmd")
 
+    def _connect_document(self, document: QTextDocument) -> None:
+        document.undoAvailable.connect(self.undo_action.setEnabled)
+        document.redoAvailable.connect(self.redo_action.setEnabled)
+        document.modificationChanged.connect(self._update_title)
+        self.undo_action.setEnabled(document.isUndoAvailable())
+        self.redo_action.setEnabled(document.isRedoAvailable())
+
+    def _install_document(self, document: QTextDocument) -> None:
+        document.setParent(self.editor)
+        self.editor.setDocument(document)
+        self._connect_document(document)
+        self._sync_formatting()
+
     def _change_profile(self, name: str) -> None:
         apply_profile(
             self.toolbar,
@@ -238,6 +256,7 @@ class MainWindow(QMainWindow):
             return
         self.editor.setPlainText("")
         self.current_path = None
+        self.suggested_save_path = None
         self.editor.document().setModified(False)
         self._update_title()
         self.editor.setFocus()
@@ -254,16 +273,38 @@ class MainWindow(QMainWindow):
         if not filename:
             return
         path = Path(filename)
+        suffix = path.suffix.casefold()
+        if suffix not in (".md", ".markdown", ".txt"):
+            QMessageBox.critical(
+                self,
+                "Could not open document",
+                "EZmd can open Markdown documents or import .txt files.",
+            )
+            return
         try:
             text = read_text(path)
-        except (OSError, UnicodeError) as error:
+            if suffix == ".txt":
+                document = plain_text_document(text, self.editor.document().defaultFont())
+                current_path = None
+                suggested_save_path = path.with_suffix(".md")
+            else:
+                sizes = (
+                    heading_point_size(self.editor, 0),
+                    heading_point_size(self.editor, 1),
+                    heading_point_size(self.editor, 2),
+                    heading_point_size(self.editor, 3),
+                )
+                document = parse_markdown(text, self.editor.document().defaultFont(), sizes)
+                current_path = path
+                suggested_save_path = None
+        except (OSError, UnicodeError, MarkdownError) as error:
             QMessageBox.critical(
                 self, "Could not open document", f"Could not open {path.name}: {error}"
             )
             return
-        self.editor.setPlainText(text)
-        self.current_path = path
-        self.editor.document().setModified(False)
+        self._install_document(document)
+        self.current_path = current_path
+        self.suggested_save_path = suggested_save_path
         self._update_title()
         self.editor.setFocus()
 
@@ -273,20 +314,31 @@ class MainWindow(QMainWindow):
             filename, _ = QFileDialog.getSaveFileName(
                 self,
                 "Save Document",
-                "",
-                "Markdown (*.md *.markdown);;Text (*.txt);;All Files (*)",
+                str(self.suggested_save_path) if self.suggested_save_path is not None else "",
+                "Markdown (*.md *.markdown);;All Files (*)",
             )
             if not filename:
                 return False
             path = Path(filename)
+            if not path.suffix:
+                path = path.with_suffix(".md")
+            elif path.suffix.casefold() not in (".md", ".markdown"):
+                QMessageBox.critical(
+                    self,
+                    "Could not save document",
+                    "EZmd documents must be saved with a .md or .markdown extension.",
+                )
+                return False
         try:
-            write_text(path, self.editor.toPlainText())
-        except (OSError, UnicodeError) as error:
+            text = serialize_markdown(self.editor.document())
+            write_text(path, text)
+        except (OSError, UnicodeError, MarkdownError) as error:
             QMessageBox.critical(
                 self, "Could not save document", f"Could not save {path.name}: {error}"
             )
             return False
         self.current_path = path
+        self.suggested_save_path = None
         self.editor.document().setModified(False)
         self._update_title()
         return True
