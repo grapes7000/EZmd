@@ -81,7 +81,9 @@ def test_window_has_a_usable_editor_and_typing_marks_it_modified(
 def test_toolbar_and_menus_share_actions_with_native_undo_history(
     qtbot: QtBot, window: MainWindow
 ) -> None:
-    file_menu, edit_menu = window.menuBar().findChildren(QMenu)
+    menu_actions = [
+        action for menu in window.menuBar().findChildren(QMenu) for action in menu.actions()
+    ]
     for action, standard in (
         (window.new_action, QKeySequence.StandardKey.New),
         (window.open_action, QKeySequence.StandardKey.Open),
@@ -89,7 +91,7 @@ def test_toolbar_and_menus_share_actions_with_native_undo_history(
         (window.undo_action, QKeySequence.StandardKey.Undo),
         (window.redo_action, QKeySequence.StandardKey.Redo),
     ):
-        assert action in (file_menu.actions() + edit_menu.actions())
+        assert action in menu_actions
         assert window.toolbar.widgetForAction(action) is not None
         assert action.shortcut() == QKeySequence(standard)
 
