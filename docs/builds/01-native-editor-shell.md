@@ -2,8 +2,8 @@
 
 ## Status
 
-Implementation in review; local automated checks pass. Linux/macOS/Windows CI and on-screen
-manual acceptance remain pending.
+Completed and owner-accepted. The local repository health gate passes, the app has been launched
+for manual review, and Linux/macOS/Windows CI passes.
 
 ## Purpose
 
@@ -402,19 +402,19 @@ reason before building that machinery.
 
 ## Definition of done
 
-- [ ] `uv run ezmd` launches the native Qt Widgets editor.
-- [ ] Required user-visible behavior works.
-- [ ] Required UI/integration/architecture/smoke promises are covered by readable tests.
-- [ ] Focused checks passed during implementation.
-- [ ] `uv run --locked python bin/check.py` passes locally.
-- [ ] Linux, macOS, and Windows CI passes.
-- [ ] No later feature was implemented early.
-- [ ] No unauthorized dependency was added.
-- [ ] No QML/Qt Quick or WebEngine primary-UI code was introduced.
-- [ ] Visual measurements are centralized through the semantic profile system.
-- [ ] No unrelated files changed.
-- [ ] Documentation matches implemented behavior.
-- [ ] Complexity review completed.
+- [x] `uv run ezmd` launches the native Qt Widgets editor.
+- [x] Required user-visible behavior works.
+- [x] Required UI/integration/architecture/smoke promises are covered by readable tests.
+- [x] Focused checks passed during implementation.
+- [x] `uv run --locked python bin/check.py` passes locally.
+- [x] Linux, macOS, and Windows CI passes.
+- [x] No later feature was implemented early.
+- [x] No unauthorized dependency was added.
+- [x] No QML/Qt Quick or WebEngine primary-UI code was introduced.
+- [x] Visual measurements are centralized through the semantic profile system.
+- [x] No unrelated files changed.
+- [x] Documentation matches implemented behavior.
+- [x] Complexity review completed.
 
 ## Owner review questions
 
