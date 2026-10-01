@@ -370,6 +370,8 @@ def _build_document(
         block_start = cursor.block()
         block_format = QTextBlockFormat(block_start.blockFormat())
         block_format.setHeadingLevel(block.heading)
+        block_format.clearProperty(QUOTE_LEVEL)
+        block_format.setIndent(0)
         if block.structure == "quote":
             block_format.setProperty(QUOTE_LEVEL, 1)
             block_format.setIndent(1)

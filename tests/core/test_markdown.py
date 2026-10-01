@@ -116,6 +116,55 @@ def test_supported_blocks_inline_combinations_and_alternate_spellings_normalize(
     assert serialize_markdown(parse(canonical)) == canonical
 
 
+def test_quote_state_does_not_leak_into_following_headings_lists_or_text() -> None:
+    source = (
+        "### Blockquote\n\n"
+        "> blockquote\n\n"
+        "### Ordered List\n\n"
+        "1. First item\n"
+        "2. Second item\n"
+        "3. Third item\n\n"
+        "### Unordered List\n\n"
+        "- First item\n"
+        "- Second item\n"
+        "- Third item\n\n"
+        "### Strikethrough\n\n"
+        "~~The world is flat.~~\n"
+    )
+    document = parse(source)
+    parsed = blocks(document)
+
+    assert [block.text() for block in parsed] == [
+        "Blockquote",
+        "blockquote",
+        "Ordered List",
+        "First item",
+        "Second item",
+        "Third item",
+        "Unordered List",
+        "First item",
+        "Second item",
+        "Third item",
+        "Strikethrough",
+        "The world is flat.",
+    ]
+    quote_levels = [block.blockFormat().intProperty(QUOTE_LEVEL) for block in parsed]
+    assert quote_levels == [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    assert [parsed[index].blockFormat().headingLevel() for index in (0, 2, 6, 10)] == [3] * 4
+    assert [parsed[index].textList().format().style() for index in (3, 4, 5)] == [
+        QTextListFormat.Style.ListDecimal
+    ] * 3
+    assert [parsed[index].textList().format().style() for index in (7, 8, 9)] == [
+        QTextListFormat.Style.ListDisc
+    ] * 3
+    assert parsed[11].begin().fragment().charFormat().fontStrikeOut()
+
+    reopened = parse(serialize_markdown(document))
+    assert [
+        block.blockFormat().intProperty(QUOTE_LEVEL) for block in blocks(reopened)
+    ] == quote_levels
+
+
 def test_literal_markdown_characters_and_unmatched_delimiters_round_trip() -> None:
     document = QTextDocument()
     document.setPlainText("# literal\n- item-looking\n3. numbered\n> quote\n* unmatched")
