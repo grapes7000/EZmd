@@ -4,6 +4,24 @@
 
 Not started.
 
+## Minimal agent invocation
+
+Once this contract is reviewed and marked ready, the owner should be able to invoke it with only:
+
+```text
+Plan Build XX
+```
+
+in OpenCode Plan mode, then after plan approval:
+
+```text
+Implement Build XX
+```
+
+in OpenCode Build mode. The agent must obtain requirements from `AGENTS.md`, this contract, its
+referenced decisions, and the existing implementation/tests rather than requiring the owner to
+restate the product specification in the prompt.
+
 ## Purpose
 
 TODO
