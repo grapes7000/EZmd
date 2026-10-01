@@ -62,14 +62,20 @@ Build 01 — Native Editor Shell — is complete. The app has a native Qt Widget
 safe basic UTF-8 file operations, unsaved-change protection, native undo/redo, and live semantic
 visual profiles. The repository health gate passes on Linux, macOS, and Windows CI.
 
-Build 02 — Word-like Formatting Toolbar — is the active reviewed contract and is ready for
-OpenCode Plan mode. It adds the first controlled rich-text vocabulary while deliberately leaving
-Markdown persistence to Build 03.
+Build 02 — Word-like Formatting Toolbar — remains the active build. It establishes the controlled
+rich-text vocabulary that Build 03 will persist. Build 03 must not enter implementation until
+Build 02 has passed its remaining acceptance gates and is formally complete.
+
+Build 03 — Markdown Round-trip — now has a drafted product contract. It defines predictable
+rich-document ↔ Markdown persistence for the Build 02 vocabulary, canonical Markdown output,
+unsupported-syntax boundaries, and `.txt` import-to-`.md` behavior while keeping normal typing free
+of whole-document conversion work.
 
 Start with:
 
 - `docs/BUILD_PLAN.md`
 - `docs/builds/02-formatting-toolbar.md`
+- `docs/builds/03-markdown-roundtrip.md`
 - `docs/UI_SYSTEM.md`
 - `docs/FILE_FORMAT.md`
 - `docs/FUTURE_IDEAS.md` for deferred context that is explicitly **not** active-build permission
