@@ -28,16 +28,10 @@ Markdown is an implementation and portability detail, not a prerequisite for usi
 The repository uses uv, Ruff, BasedPyright, pytest, pytest-qt, and pytest-cov.
 
 The runtime UI dependency is PySide6/Qt 6. The project is a packaged `src/ezmd` application using
-uv's build backend so the eventual command can simply be:
+uv's build backend, so the application command is:
 
 ```text
 uv run ezmd
-```
-
-Before the first implementation build, generate and review the lockfile once:
-
-```text
-uv lock
 ```
 
 The complete cross-platform quality gate is:
@@ -61,13 +55,20 @@ Read `AGENTS.md` before asking OpenCode/Codex or another coding agent to plan or
 
 ## Current status
 
-Repository scaffold only. Build 01 is specified but no application feature code has been
-implemented yet.
+Build 01 — Native Editor Shell — is complete. The app has a native Qt Widgets writing window,
+safe basic UTF-8 file operations, unsaved-change protection, native undo/redo, and live semantic
+visual profiles. The repository health gate passes on Linux, macOS, and Windows CI.
+
+Build 02 — Word-like Formatting Toolbar — is the active reviewed contract and is ready for
+OpenCode Plan mode. It adds the first controlled rich-text vocabulary while deliberately leaving
+Markdown persistence to Build 03.
 
 Start with:
 
 - `docs/BUILD_PLAN.md`
-- `docs/builds/01-native-editor-shell.md`
+- `docs/builds/02-formatting-toolbar.md`
 - `docs/UI_SYSTEM.md`
+- `docs/FILE_FORMAT.md`
+- `docs/FUTURE_IDEAS.md` for deferred context that is explicitly **not** active-build permission
 - `docs/PLATFORM_SUPPORT.md`
 - `docs/HARDENING.md`
