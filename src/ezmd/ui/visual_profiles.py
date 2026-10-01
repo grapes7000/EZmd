@@ -2,8 +2,8 @@
 
 from dataclasses import dataclass
 
-from PySide6.QtGui import QPalette
-from PySide6.QtWidgets import QComboBox, QTextEdit, QToolBar, QVBoxLayout
+from PySide6.QtGui import QFont, QFontDatabase, QFontInfo, QPalette
+from PySide6.QtWidgets import QApplication, QComboBox, QTextEdit, QToolBar, QVBoxLayout
 
 from ezmd.ui.quote_editor import QuoteTextEdit
 
@@ -30,12 +30,28 @@ PROFILES = {
 DEFAULT_PROFILE = "Focus"
 HEADING_SCALES = (1.0, 1.6, 1.35, 1.15)
 HISTORY_GLYPH_SCALE = 1.5
+FALLBACK_POINT_SIZE = 12.0
+
+
+def _font_point_size(font: QFont | QFontInfo, dpi: int) -> float | None:
+    size = font.pointSizeF()
+    if size > 0:
+        return size
+    pixels = font.pixelSize()
+    return pixels * 72 / dpi if pixels > 0 and dpi > 0 else None
+
+
+def _resolve_base_point_size(fonts: tuple[QFont | QFontInfo, ...], dpi: int) -> float:
+    system_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont)
+    for font in (*fonts, QApplication.font(), system_font):
+        size = _font_point_size(font, dpi)
+        if size is not None:
+            return size
+    return FALLBACK_POINT_SIZE
 
 
 def _base_point_size(editor: QTextEdit) -> float:
-    font = editor.fontInfo()
-    size = font.pointSizeF()
-    return size if size > 0 else font.pixelSize() * 72 / editor.logicalDpiY()
+    return _resolve_base_point_size((editor.fontInfo(), editor.font()), editor.logicalDpiY())
 
 
 def heading_point_size(editor: QTextEdit, level: int) -> float:
