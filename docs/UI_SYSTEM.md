@@ -153,10 +153,37 @@ Meaning:
 4. Bulleted list / Numbered list / Blockquote.
 
 Use familiar curved-arrow visuals for Undo/Redo and preserve clear accessible names/tooltips.
-No third-party icon pack is required merely for these controls.
+The Strikethrough control should make its `S` visibly struck through while retaining the plain
+accessible name/tooltip `Strikethrough`. No third-party icon pack is required for these controls.
 
 New/Open/Save and the visual-profile choice do not occupy formatting-toolbar space from Build 02
 onward.
+
+## Blockquote presentation
+
+A blockquote must look recognizably like quoted writing rather than merely like text that was
+indented with Tab.
+
+The semantic truth remains the document's quote state (`BlockQuoteLevel = 1` in the Build 02
+model). Presentation must not insert a literal `|`, `>`, or other marker character into the user's
+document and must not invent a second quote model.
+
+The accepted visual treatment is deliberately restrained:
+
+- a thin vertical hairline at the left of each quoted block;
+- modest inset/padding between that hairline and the text;
+- otherwise normal document typography, including any independent Paragraph/H1/H2/H3 style and
+  Bold/Italic/Strikethrough formatting;
+- no card, large filled background, decorative shadow, or automatic italicization.
+
+The hairline is presentation only. Its width/spacing/color should come from existing semantic
+profile/palette roles where practical instead of unrelated hard-coded styling. Lab, QTemp, and
+Focus may express the same quote treatment at their existing density, but switching profiles must
+not change quote semantics or document history.
+
+Prefer the smallest verified Qt-native/rendering approach that keeps quote presentation separate
+from document meaning. Do not add visible marker characters, HTML persistence, or a generalized
+custom-document rendering framework merely to draw the hairline.
 
 ## Runtime profile selection
 
@@ -205,6 +232,8 @@ Low chrome must not mean low discoverability.
 - Controls should remain usable at common desktop scaling factors.
 - Familiar commands such as Undo/Redo should retain recognizable visual language rather than
   requiring the user to relearn common desktop conventions.
+- Semantic formatting should be visually distinguishable enough that users do not need to infer
+  hidden state from toolbar controls alone; blockquotes are the first explicit example.
 
 ## What is deliberately deferred
 
