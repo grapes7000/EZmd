@@ -41,7 +41,7 @@ def _font_point_size(font: QFont | QFontInfo, dpi: int) -> float | None:
     return pixels * 72 / dpi if pixels > 0 and dpi > 0 else None
 
 
-def _resolve_base_point_size(fonts: tuple[QFont | QFontInfo, ...], dpi: int) -> float:
+def resolve_base_point_size(fonts: tuple[QFont | QFontInfo, ...], dpi: int) -> float:
     system_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont)
     for font in (*fonts, QApplication.font(), system_font):
         size = _font_point_size(font, dpi)
@@ -51,7 +51,7 @@ def _resolve_base_point_size(fonts: tuple[QFont | QFontInfo, ...], dpi: int) -> 
 
 
 def _base_point_size(editor: QTextEdit) -> float:
-    return _resolve_base_point_size((editor.fontInfo(), editor.font()), editor.logicalDpiY())
+    return resolve_base_point_size((editor.fontInfo(), editor.font()), editor.logicalDpiY())
 
 
 def heading_point_size(editor: QTextEdit, level: int) -> float:

@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QToolButton
 from pytestqt.qtbot import QtBot
 
 from ezmd.ui.main_window import MainWindow
-from ezmd.ui.visual_profiles import _resolve_base_point_size, heading_point_size
+from ezmd.ui.visual_profiles import heading_point_size, resolve_base_point_size
 
 
 @pytest.fixture
@@ -256,7 +256,7 @@ def test_heading_size_falls_back_when_a_font_has_no_usable_size(window: MainWind
     font_without_size = QFont()
     assert font_without_size.pointSizeF() <= 0
     assert font_without_size.pixelSize() <= 0
-    assert _resolve_base_point_size((font_without_size,), window.editor.logicalDpiY()) > 0
+    assert resolve_base_point_size((font_without_size,), window.editor.logicalDpiY()) > 0
 
 
 @pytest.mark.parametrize("level", [1, 2, 3])
