@@ -28,9 +28,12 @@ Markdown files → optional connection suggestions
 The primary UI uses PySide6 **Qt Widgets**. QML/Qt Quick is not part of the initial architecture.
 Qt WebEngine is not part of the core editor.
 
-The central editable document should remain close to `QTextEdit`/`QTextDocument`. Later formatting
-and Markdown serialization should work with that native document model rather than maintaining a
+The central editable document should remain close to `QTextEdit`/`QTextDocument`. Formatting and
+Markdown serialization should work with that native document model rather than maintaining a
 second editor or browser preview as the real state.
+
+Build 01 established the real native editor shell. Build 02 adds the first controlled rich-text
+vocabulary directly to that same document model; it does not introduce a second representation.
 
 ## Source of truth
 
@@ -39,6 +42,10 @@ Markdown files are user data and remain authoritative.
 While a document is open, its Qt document is the editable in-memory state. Saving serializes the
 supported document state back to Markdown. Derived databases/caches must never silently become
 the only copy of user content.
+
+Build 02 is an explicitly transitional pre-round-trip development slice: its new rich formatting
+is in-memory only while Save still writes plain text. Build 03 is responsible for restoring the
+normal architectural rule above by defining durable rich document ↔ Markdown serialization.
 
 Any database used for search, graph acceleration, previews, recent-file metadata, or other
 derived information must be safe to delete and rebuild.
@@ -98,11 +105,17 @@ Do not introduce without a later accepted decision:
 - network service requirement;
 - SQLite as the primary document store.
 
+A modular future workspace with panels/splits does not by itself justify any of those systems.
+Current deferred workspace reasoning is recorded in `docs/FUTURE_IDEAS.md`.
+
 ## Future architecture questions
 
 These remain intentionally deferred until the build that needs them:
 
-- exact controlled formatting subset for Markdown round-trip;
+- Build 03's exact Markdown parsing/serialization/normalization rules for the controlled Build 02
+  formatting vocabulary;
+- how later links/images/task lists extend the controlled document model without undermining
+  portable Markdown;
 - autosave/recovery behavior and its interaction with later encryption;
 - exact wiki-link parsing boundary;
 - how optional semantic features remain isolated if they are ever added.
