@@ -6,12 +6,15 @@ Markdown files.
 > **Markdown file format, non-Markdown user experience.**
 > **The editor stays tiny. Intelligence gets layered on top.**
 
-The user experience should feel familiar to people who know Microsoft Word or Google Docs.
-Markdown is an implementation and portability detail, not a prerequisite for using the app.
+EZmd has two standing product priorities: it should feel **blazingly fast** and **incredibly
+intuitive/user-friendly**. Normal writing and common interaction should feel immediate, while the
+interface should feel familiar to people who know Microsoft Word or Google Docs. Markdown is an
+implementation and portability detail, not a prerequisite for using the app.
 
 ## Project goals
 
 - Native and extremely responsive.
+- Familiar, predictable, and easy to discover without requiring Markdown knowledge.
 - Cross-platform across Linux, macOS, and Windows.
 - Simple enough for a beginner to read and understand the source.
 - Plain Markdown files remain the durable source of truth.
