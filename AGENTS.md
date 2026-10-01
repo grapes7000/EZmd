@@ -31,6 +31,38 @@ Before planning or editing any build, read in this order:
 
 Later-build documents are context, not permission to implement later features early.
 
+## Minimal build invocation
+
+The repository is intentionally documented so the owner should not need to paste a second product
+specification into the coding-agent prompt.
+
+A short invocation is enough when the numbered build contract is marked ready, for example:
+
+```text
+Plan Build 02
+```
+
+in OpenCode Plan mode, followed after owner approval by:
+
+```text
+Implement Build 02
+```
+
+in OpenCode Build mode.
+
+If the owner writes only `Build 02`, use the currently selected OpenCode mode to determine whether
+the request is to plan or implement. Resolve the number to the unique matching file under
+`docs/builds/` and treat that file as the active contract. The build contract, this file, its
+referenced decisions, and the existing code/tests contain the requirements; do not ask the owner
+to restate them in a long prompt.
+
+If no unique matching build file exists, the build is not marked ready for the requested phase, an
+approved implementation plan is required but missing, or the repository documents conflict in a
+material way, stop and report that exact issue instead of guessing.
+
+`docs/FUTURE_IDEAS.md` is durable context only. It is not authorization to pull deferred ideas into
+an active build unless that build contract explicitly promotes them into scope.
+
 ## OpenCode Plan mode
 
 Plan mode plans **implementation**, not the product.
