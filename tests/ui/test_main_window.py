@@ -131,6 +131,19 @@ def test_new_on_clean_document_clears_text_path_and_modified_state(
     assert "Untitled" in window.windowTitle()
 
 
+def test_new_document_resets_insertion_point_formatting(window: MainWindow) -> None:
+    window.bold_action.trigger()
+    window.italic_action.trigger()
+    window.strike_action.trigger()
+    window.new_document()
+
+    type_text(window, "Plain")
+    char_format = window.editor.document().begin().begin().fragment().charFormat()
+    assert char_format.fontWeight() == QFont.Weight.Normal
+    assert not char_format.fontItalic()
+    assert not char_format.fontStrikeOut()
+
+
 def test_canceling_new_keeps_unsaved_text_cursor_selection_and_path(
     qtbot: QtBot, window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

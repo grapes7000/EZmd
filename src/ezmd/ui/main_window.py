@@ -9,6 +9,7 @@ from PySide6.QtGui import (
     QActionGroup,
     QCloseEvent,
     QKeySequence,
+    QTextCharFormat,
     QTextDocument,
     QTextListFormat,
 )
@@ -255,6 +256,7 @@ class MainWindow(QMainWindow):
         if not self._confirm_unsaved_changes():
             return
         self.editor.setPlainText("")
+        self.editor.setCurrentCharFormat(QTextCharFormat())
         self.current_path = None
         self.suggested_save_path = None
         self.editor.document().setModified(False)

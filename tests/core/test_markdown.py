@@ -48,6 +48,11 @@ def test_intentional_empty_paragraphs_are_distinct_from_separators() -> None:
     assert [block.text() for block in blocks(separated)] == ["Before", "After"]
 
 
+def test_one_intentional_empty_paragraph_is_not_an_empty_document() -> None:
+    document = parse("\\\n")
+    assert serialize_markdown(document) == "\\\n"
+
+
 def test_literal_backslash_is_not_the_empty_paragraph_marker() -> None:
     document = parse("\\\\\n")
     assert document.toPlainText() == "\\"
@@ -176,6 +181,76 @@ def test_literal_markdown_characters_and_unmatched_delimiters_round_trip() -> No
     assert serialize_markdown(reopened) == canonical
 
 
+@pytest.mark.parametrize("text", ["-", "+", "1.", "123."])
+def test_bare_structural_markers_remain_literal_text(text: str) -> None:
+    document = QTextDocument()
+    document.setPlainText(text)
+    canonical = serialize_markdown(document)
+    reopened = parse(canonical)
+    assert reopened.toPlainText() == text
+    assert reopened.begin().textList() is None
+    assert serialize_markdown(reopened) == canonical
+
+
+@pytest.mark.parametrize("text", [" - literal", "  + literal", "   1. literal"])
+def test_indented_structural_markers_remain_literal_text(text: str) -> None:
+    document = QTextDocument()
+    document.setPlainText(text)
+    canonical = serialize_markdown(document)
+    reopened = parse(canonical)
+    assert reopened.toPlainText() == text
+    assert serialize_markdown(reopened) == canonical
+
+
+@pytest.mark.parametrize("text", ["trailing ", "trailing  "])
+def test_trailing_spaces_do_not_become_hard_break_syntax(text: str) -> None:
+    document = QTextDocument()
+    document.setPlainText(text)
+    canonical = serialize_markdown(document)
+    reopened = parse(canonical)
+    assert reopened.toPlainText() == text
+    assert serialize_markdown(reopened) == canonical
+
+
+def test_backslashes_only_escape_supported_markdown_punctuation() -> None:
+    document = parse("C:\\Users\\name and \\*literal stars\\*\n")
+    assert document.toPlainText() == "C:\\Users\\name and *literal stars*"
+    assert serialize_markdown(parse(serialize_markdown(document))) == serialize_markdown(document)
+
+
+@pytest.mark.parametrize("source", ["2 * 3 * 4\n", "foo_bar_baz\n", "*open but not closed *\n"])
+def test_ordinary_inline_punctuation_does_not_become_formatting(source: str) -> None:
+    document = parse(source)
+    assert document.toPlainText() == source.rstrip("\n")
+    assert serialize_markdown(parse(serialize_markdown(document))) == serialize_markdown(document)
+
+
+@pytest.mark.parametrize("structure", ["bullet", "numbered", "quote"])
+def test_structured_blocks_can_contain_literal_list_looking_text(structure: str) -> None:
+    document = QTextDocument()
+    document.setPlainText("- literal marker")
+    block = document.begin()
+    if structure == "quote":
+        block_format = block.blockFormat()
+        block_format.setProperty(QUOTE_LEVEL, 1)
+        QTextCursor(block).setBlockFormat(block_format)
+    else:
+        cursor = QTextCursor(block)
+        list_format = QTextListFormat()
+        list_format.setIndent(1)
+        list_format.setStyle(
+            QTextListFormat.Style.ListDisc
+            if structure == "bullet"
+            else QTextListFormat.Style.ListDecimal
+        )
+        cursor.createList(list_format)
+
+    canonical = serialize_markdown(document)
+    reopened = parse(canonical)
+    assert reopened.toPlainText() == "- literal marker"
+    assert serialize_markdown(reopened) == canonical
+
+
 def test_crossing_inline_format_boundaries_round_trip_semantically() -> None:
     document = QTextDocument()
     cursor = QTextCursor(document)
@@ -205,6 +280,71 @@ def test_crossing_inline_format_boundaries_round_trip_semantically() -> None:
     assert serialize_markdown(reopened) == canonical
 
 
+def test_combined_to_single_inline_format_transitions_round_trip() -> None:
+    document = QTextDocument()
+    cursor = QTextCursor(document)
+    for text, bold_enabled, italic_enabled in (
+        ("a", True, True),
+        ("b", True, False),
+        ("c", False, True),
+    ):
+        char_format = QTextCharFormat()
+        char_format.setFontWeight(QFont.Weight.Bold if bold_enabled else QFont.Weight.Normal)
+        char_format.setFontItalic(italic_enabled)
+        cursor.insertText(text, char_format)
+
+    canonical = serialize_markdown(document)
+    reopened = parse(canonical)
+    formats: list[tuple[bool, bool]] = []
+    for position in range(1, 4):
+        cursor = QTextCursor(reopened)
+        cursor.setPosition(position)
+        char_format = cursor.charFormat()
+        formats.append((char_format.fontWeight() >= QFont.Weight.Bold, char_format.fontItalic()))
+    assert reopened.toPlainText() == "abc"
+    assert formats == [(True, True), (True, False), (False, True)]
+    assert serialize_markdown(reopened) == canonical
+
+
+@pytest.mark.parametrize("style", ["bold", "italic", "strike"])
+def test_inline_formatting_with_boundary_whitespace_keeps_text_and_words(style: str) -> None:
+    document = QTextDocument()
+    cursor = QTextCursor(document)
+    char_format = QTextCharFormat()
+    if style == "bold":
+        char_format.setFontWeight(QFont.Weight.Bold)
+    elif style == "italic":
+        char_format.setFontItalic(True)
+    else:
+        char_format.setFontStrikeOut(True)
+    cursor.insertText(" a ", char_format)
+
+    reopened = parse(serialize_markdown(document))
+    assert reopened.toPlainText() == " a "
+    for position in range(1, 4):
+        cursor = QTextCursor(reopened)
+        cursor.setPosition(position)
+        reopened_format = cursor.charFormat()
+        assert (reopened_format.fontWeight() >= QFont.Weight.Bold) == (style == "bold")
+        assert reopened_format.fontItalic() == (style == "italic")
+        assert reopened_format.fontStrikeOut() == (style == "strike")
+
+
+def test_formatted_text_after_leading_spaces_round_trips() -> None:
+    document = QTextDocument()
+    cursor = QTextCursor(document)
+    cursor.insertText("  ")
+    bold = QTextCharFormat()
+    bold.setFontWeight(QFont.Weight.Bold)
+    cursor.insertText("a", bold)
+
+    reopened = parse(serialize_markdown(document))
+    assert reopened.toPlainText() == "  a"
+    cursor = QTextCursor(reopened)
+    cursor.setPosition(3)
+    assert cursor.charFormat().fontWeight() >= QFont.Weight.Bold
+
+
 @pytest.mark.parametrize(
     "source",
     [
@@ -222,6 +362,15 @@ def test_crossing_inline_format_boundaries_round_trip_semantically() -> None:
         "- [ ] task\n",
         "---\n",
         "<div>html</div>\n",
+        "<!-- html comment -->\n",
+        "1. [ ] task\n",
+        " #### H4\n",
+        "   ~~~\ncode\n   ~~~\n",
+        "hard break  \nnext line\n",
+        "hard break\\\nnext line\n",
+        "- item\nlazy continuation\n",
+        "> quote\nlazy continuation\n",
+        "> soft\n> wrapped\n",
     ],
 )
 def test_unsupported_markdown_is_refused(source: str) -> None:

@@ -18,16 +18,14 @@ from PySide6.QtGui import (
 )
 
 QUOTE_LEVEL = QTextFormat.Property.BlockQuoteLevel
+EMPTY_PARAGRAPH = QTextFormat.Property.UserProperty
 _HEADING = re.compile(r"^(#{1,6})(?: (.*))?$")
 _BULLET = re.compile(r"^([-+*])(?: (.*))?$")
 _NUMBERED = re.compile(r"^(\d+)\.(?: (.*))?$")
-_BLOCK_LEADING_NUMBER = re.compile(r"^(\d+)\. ")
 _TABLE_DIVIDER = re.compile(r"^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$")
 _HORIZONTAL_RULE = re.compile(r"^\s{0,3}((\*\s*){3,}|(-\s*){3,}|(_\s*){3,})$")
 _INLINE_MARKERS = (
     ("~~", "strike"),
-    ("***", "bold_italic"),
-    ("___", "bold_italic"),
     ("**", "bold"),
     ("__", "bold"),
     ("*", "italic"),
@@ -157,10 +155,15 @@ def _parse_blocks(source: str) -> list[_Block]:
         parsed = _parse_structural_line(line)
         if parsed is None:
             if active_list is not None:
-                active_list = None
+                raise MarkdownError("List continuation lines are not supported.")
+            if blocks and blocks[-1].structure == "quote" and not separated:
+                raise MarkdownError("Quote continuation lines are not supported.")
             paragraph.append(line)
             separated = False
             continue
+
+        if parsed[1] == "quote" and blocks and blocks[-1].structure == "quote" and not separated:
+            raise MarkdownError("Soft-wrapped blockquotes are not supported.")
 
         flush_paragraph()
         heading, structure, content = parsed
@@ -224,12 +227,14 @@ def _take_heading(content: str) -> tuple[int, str]:
 
 def _validate_unsupported(lines: list[str]) -> None:
     for index, line in enumerate(lines):
-        if line.startswith(("```", "~~~")):
+        if re.match(r"^\s{0,3}(?:```|~~~)", line):
             raise MarkdownError("Fenced code blocks are not supported.")
         if line.startswith(("    ", "\t")):
             raise MarkdownError("Indented code and nested structures are not supported.")
-        if re.match(r"^\s{2,}(?:[-+*]|\d+\.|>)\s?", line):
-            raise MarkdownError("Nested lists and quotes are not supported.")
+        if re.match(r"^ {1,3}(?:#{1,6}(?: |$)|[-+*](?: |$)|\d+\.(?: |$)|>(?: |$))", line):
+            raise MarkdownError("Indented Markdown structures are not supported.")
+        if re.match(r"^\s{0,3}#{4,6}(?: |$)", line):
+            raise MarkdownError("Only heading levels H1 through H3 are supported.")
         if _HORIZONTAL_RULE.fullmatch(line):
             raise MarkdownError("Horizontal rules are not supported.")
         if _TABLE_DIVIDER.fullmatch(line) or (
@@ -244,16 +249,22 @@ def _validate_unsupported(lines: list[str]) -> None:
             or re.search(r"(?<!\\)\[[^]]+\]\[[^]]*\]", line)
         ):
             raise MarkdownError("Links and images are not supported.")
-        if re.search(r"(?<!\\)<(?:https?://|mailto:|/?[A-Za-z][^>]*)>", line):
+        if re.search(r"(?<!\\)<(?:https?://|mailto:|/?[A-Za-z][^>]*|!--)", line):
             raise MarkdownError("Autolinks and HTML are not supported.")
         if _contains_unescaped(line, "`"):
             raise MarkdownError("Inline code is not supported.")
-        if re.match(r"^[-+*] \[[ xX]\] ", line):
+        if re.match(r"^(?:[-+*]|\d+\.) \[[ xX]\] ", line):
             raise MarkdownError("Task lists are not supported.")
         if re.match(r"^\[\^[^]]+\]:", line) or re.search(r"(?<!\\)\[\^[^]]+\]", line):
             raise MarkdownError("Footnotes are not supported.")
         if re.match(r"^\[[^]]+\]:\s*\S", line) or line.startswith(": "):
             raise MarkdownError("Definitions are not supported.")
+        if line.endswith("  ") or (line != "\\" and _has_odd_trailing_backslashes(line)):
+            raise MarkdownError("Hard line breaks are not supported.")
+
+
+def _has_odd_trailing_backslashes(text: str) -> bool:
+    return (len(text) - len(text.rstrip("\\"))) % 2 == 1
 
 
 def _contains_unescaped(text: str, token: str) -> bool:
@@ -289,7 +300,11 @@ def _parse_inline(text: str) -> tuple[_Run, ...]:
             plain.clear()
 
     while index < len(text):
-        if text[index] == "\\" and index + 1 < len(text):
+        if (
+            text[index] == "\\"
+            and index + 1 < len(text)
+            and text[index + 1] in " \\*_~`[]<>#!|+-.>"
+        ):
             plain.append(text[index + 1])
             index += 2
             continue
@@ -312,18 +327,27 @@ def _parse_inline(text: str) -> tuple[_Run, ...]:
 def _inline_marker_at(
     text: str, index: int, stack: list[tuple[str, InlineStyle]]
 ) -> tuple[str, InlineStyle] | None:
-    if stack and text.startswith(stack[-1][0], index):
+    if (
+        stack
+        and text.startswith(stack[-1][0], index)
+        and _can_close_marker(text, stack[-1][0], index)
+    ):
         return stack[-1]
     for marker, name in _INLINE_MARKERS:
         if not text.startswith(marker, index):
             continue
+        following = index + len(marker)
+        if following >= len(text) or text[following].isspace():
+            continue
+        if marker.startswith("_") and index > 0:
+            if text[index - 1].isalnum() and text[following].isalnum():
+                continue
         if _find_unescaped(text, marker, index + len(marker)) < 0:
             continue
         style = {
             "bold": InlineStyle.BOLD,
             "italic": InlineStyle.ITALIC,
             "strike": InlineStyle.STRIKE,
-            "bold_italic": InlineStyle.BOLD | InlineStyle.ITALIC,
         }[name]
         return marker, style
     return None
@@ -337,10 +361,30 @@ def _find_unescaped(text: str, marker: str, start: int) -> int:
         while index >= 0 and text[index] == "\\":
             slashes += 1
             index -= 1
-        if slashes % 2 == 0:
+        if slashes % 2 == 0 and _can_close_marker(text, marker, position):
             return position
         position += len(marker)
     return -1
+
+
+def _can_close_marker(text: str, marker: str, position: int) -> bool:
+    if position == 0:
+        return False
+    if text[position - 1].isspace():
+        slashes = 0
+        index = position - 2
+        while index >= 0 and text[index] == "\\":
+            slashes += 1
+            index -= 1
+        if slashes % 2 == 0:
+            return False
+    after = position + len(marker)
+    return not (
+        marker.startswith("_")
+        and after < len(text)
+        and text[position - 1].isalnum()
+        and text[after].isalnum()
+    )
 
 
 def _merge_runs(runs: list[_Run]) -> list[_Run]:
@@ -371,10 +415,13 @@ def _build_document(
         block_format = QTextBlockFormat(block_start.blockFormat())
         block_format.setHeadingLevel(block.heading)
         block_format.clearProperty(QUOTE_LEVEL)
+        block_format.clearProperty(EMPTY_PARAGRAPH)
         block_format.setIndent(0)
         if block.structure == "quote":
             block_format.setProperty(QUOTE_LEVEL, 1)
             block_format.setIndent(1)
+        elif block.heading == 0 and not block.runs:
+            block_format.setProperty(EMPTY_PARAGRAPH, True)
         cursor.setBlockFormat(block_format)
 
         block_char_format = QTextCharFormat()
@@ -430,6 +477,7 @@ def _is_placeholder_empty_block(block: QTextBlock) -> bool:
         and block.blockFormat().headingLevel() == 0
         and not block.textList()
         and not block.blockFormat().hasProperty(QUOTE_LEVEL)
+        and not block.blockFormat().boolProperty(EMPTY_PARAGRAPH)
     )
 
 
@@ -448,7 +496,7 @@ def _serialize_block(
     if quote_level and list_style is not None:
         raise MarkdownError("Quote/list combinations are not supported.")
 
-    content = _serialize_inline(block)
+    content = _escape_block_start(_serialize_inline(block))
     if not content and heading == 0 and list_style is None and not quote_level:
         return "\\"
     heading_marker = "#" * heading
@@ -461,7 +509,7 @@ def _serialize_block(
         return marker if not content else f"{marker} {content}"
     if quote_level:
         return ">" if not content else f"> {content}"
-    return _escape_block_start(content)
+    return content
 
 
 def _serialize_inline(block: QTextBlock) -> str:
@@ -474,7 +522,7 @@ def _serialize_inline(block: QTextBlock) -> str:
         if "\ufffc" in text:
             raise MarkdownError("Embedded objects are not supported.")
         char_format = fragment.charFormat()
-        styles = tuple(
+        fragment_styles = tuple(
             style
             for style, enabled in (
                 (InlineStyle.BOLD, char_format.fontWeight() >= QFont.Weight.Bold),
@@ -483,16 +531,29 @@ def _serialize_inline(block: QTextBlock) -> str:
             )
             if enabled
         )
-        common = 0
-        while common < min(len(active), len(styles)) and active[common] == styles[common]:
-            common += 1
-        output.extend(_style_marker(style) for style in reversed(active[common:]))
-        output.extend(_style_marker(style) for style in styles[common:])
-        output.append(_escape_inline(text))
-        active = styles
+        boundary_parts = re.fullmatch(r"(\s*)(.*?)(\s*)", text, re.DOTALL)
+        assert boundary_parts is not None
+        for part, styles in (
+            (boundary_parts.group(1), fragment_styles),
+            (boundary_parts.group(2), fragment_styles),
+            (boundary_parts.group(3), fragment_styles),
+        ):
+            if not part:
+                continue
+            common = 0
+            while common < min(len(active), len(styles)) and active[common] == styles[common]:
+                common += 1
+            output.extend(_style_marker(style) for style in reversed(active[common:]))
+            output.extend(_style_marker(style) for style in styles[common:])
+            output.append(
+                _escape_formatted_whitespace(part)
+                if part.isspace() and styles
+                else _escape_inline(part)
+            )
+            active = styles
         iterator += 1
     output.extend(_style_marker(style) for style in reversed(active))
-    return "".join(output)
+    return _escape_trailing_spaces("".join(output))
 
 
 def _style_marker(style: InlineStyle) -> str:
@@ -512,14 +573,26 @@ def _escape_inline(text: str) -> str:
     return "".join(escaped)
 
 
+def _escape_formatted_whitespace(text: str) -> str:
+    return "".join(f"\\{character}" for character in text)
+
+
+def _escape_trailing_spaces(text: str) -> str:
+    trailing = len(text) - len(text.rstrip(" "))
+    if not trailing:
+        return text
+    return text[:-trailing] + "\\ " * trailing
+
+
 def _escape_block_start(text: str) -> str:
-    if re.match(r"^(?:[-+] |\d+\. )", text):
-        position = text.index(" ") - 1
+    marker = re.match(r"^( {0,3})([-+])(?: |$)", text)
+    if marker:
+        position = len(marker.group(1))
         return f"{text[:position]}\\{text[position:]}"
     if _HORIZONTAL_RULE.fullmatch(text):
         return f"\\{text}"
-    match = _BLOCK_LEADING_NUMBER.match(text)
-    if match:
-        dot = text.index(".")
+    number = re.match(r"^( {0,3})\d+\.(?: |$)", text)
+    if number:
+        dot = text.index(".", len(number.group(1)))
         return f"{text[:dot]}\\{text[dot:]}"
     return text
