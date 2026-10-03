@@ -10,6 +10,25 @@ never heard of Markdown.
 Markdown exists underneath the interface because it is portable, durable, human-readable, and not
 tied to this application.
 
+## Primary product priorities
+
+Two goals outrank feature count and cleverness:
+
+1. **EZmd should feel blazingly fast.** Normal writing, cursor movement, formatting, opening a
+   document, and ordinary navigation should feel immediate. Features that make common editing feel
+   sluggish are not acceptable merely because they are powerful.
+2. **EZmd should feel incredibly intuitive and user-friendly.** Familiar actions should behave the
+   way users reasonably expect from good desktop writing software. The interface should reveal
+   complexity only when it is useful; Markdown syntax, internal document structure, and technical
+   implementation details should stay out of the user's way.
+
+When choosing between otherwise valid designs, prefer the one that makes the common writing path
+faster, clearer, more predictable, and easier to discover.
+
+A feature is not successful merely because it exists or is technically correct. It should earn its
+place by improving the writing experience without compromising responsiveness, safety, or
+understandability.
+
 ## The application should be
 
 - Native.
@@ -44,6 +63,10 @@ lists, links, and images.
 Markdown-style shortcuts may be accepted as conveniences, but visible Markdown syntax is never
 required.
 
+Common actions should be discoverable without documentation, and keyboard shortcuts should follow
+established desktop conventions where practical. Error states should explain what happened in
+plain language and preserve user work.
+
 ## Visual principle
 
 The writing surface gets the space and attention. Navigation, actions, status, and supporting
@@ -67,3 +90,7 @@ If two implementations satisfy the same requirements, prefer the one with:
 4. More obvious data flow.
 5. Easier tests.
 6. Easier explanation to a new reader.
+
+Simplicity is valuable partly because it protects the two primary product priorities: fewer moving
+parts make it easier to keep the editor fast, predictable, and understandable to users and
+maintainers.

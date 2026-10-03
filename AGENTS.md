@@ -31,6 +31,55 @@ Before planning or editing any build, read in this order:
 
 Later-build documents are context, not permission to implement later features early.
 
+## Product priorities that apply to every build
+
+Two product qualities are global constraints, even when an active build document does not repeat
+them word-for-word:
+
+1. **Blazingly fast interaction.** Normal writing, cursor movement, selection, ordinary formatting,
+   opening a typical document, and common navigation should feel immediate. Do not accept avoidable
+   work on the hot path merely to make an implementation more general or future-proof.
+2. **Incredibly intuitive, user-friendly behavior.** Prefer familiar desktop-writing conventions,
+   clear discoverability, predictable state changes, and plain-language errors. Do not expose
+   Markdown syntax, implementation structure, or technical complexity to the user unless the
+   product contract explicitly calls for it.
+
+When several implementations satisfy the contract, prefer the one that best preserves those two
+qualities while remaining safe and understandable. A technically correct feature that noticeably
+slows normal writing or makes a familiar action confusing is not complete.
+
+## Minimal build invocation
+
+The repository is intentionally documented so the owner should not need to paste a second product
+specification into the coding-agent prompt.
+
+A short invocation is enough when the numbered build contract is marked ready, for example:
+
+```text
+Plan Build 02
+```
+
+in OpenCode Plan mode, followed after owner approval by:
+
+```text
+Implement Build 02
+```
+
+in OpenCode Build mode.
+
+If the owner writes only `Build 02`, use the currently selected OpenCode mode to determine whether
+the request is to plan or implement. Resolve the number to the unique matching file under
+`docs/builds/` and treat that file as the active contract. The build contract, this file, its
+referenced decisions, and the existing code/tests contain the requirements; do not ask the owner
+to restate them in a long prompt.
+
+If no unique matching build file exists, the build is not marked ready for the requested phase, an
+approved implementation plan is required but missing, or the repository documents conflict in a
+material way, stop and report that exact issue instead of guessing.
+
+`docs/FUTURE_IDEAS.md` is durable context only. It is not authorization to pull deferred ideas into
+an active build unless that build contract explicitly promotes them into scope.
+
 ## OpenCode Plan mode
 
 Plan mode plans **implementation**, not the product.
@@ -46,6 +95,7 @@ A good plan answers:
 - What cross-platform details need care on Linux, macOS, and Windows?
 - What focused checks should be run while implementing?
 - Does the expected implementation still fit the build's size/complexity budget?
+- Does the plan preserve immediate common-path interaction and familiar/user-friendly behavior?
 
 Plan mode must **not**:
 
@@ -127,6 +177,10 @@ invent product behavior merely to create a convenient test.
     a product decision.
 22. If implementation becomes substantially larger or more complex than the build document
     anticipates, stop and explain why before continuing.
+23. Do not make a familiar user interaction surprising merely because a different behavior is
+    easier to code. Follow the build contract and established desktop conventions where they apply.
+24. Keep common-path work local. Avoid whole-document, whole-vault, or global UI work during normal
+    typing/cursor movement when a smaller operation satisfies the same behavior.
 
 ## Required workflow for every build
 
@@ -139,7 +193,8 @@ invent product behavior merely to create a convenient test.
 7. Run the cross-platform repository health gate before completion:
    `uv run --locked python bin/check.py`.
 8. Review the final diff for unrelated changes, hidden I/O, unsafe error handling, type
-   suppressions, platform assumptions, and unnecessary abstraction.
+   suppressions, platform assumptions, unnecessary abstraction, common-path performance costs,
+   and confusing user-facing behavior.
 9. Update documentation only when implementation changed a documented fact or the active build
    status.
 10. Summarize exactly what changed, what was tested, and any remaining uncertainty.
@@ -157,5 +212,7 @@ Ask:
 - Did a new abstraction make the code harder for the owner to explain?
 - Is any platform-specific branch present that Qt, `pathlib`, or the standard library already
   handles portably?
+- Would a normal user understand the new interaction without knowing how the code works?
+- Is there a simpler interaction that is more familiar without weakening the product contract?
 
 If yes, simplify before marking the build complete.
