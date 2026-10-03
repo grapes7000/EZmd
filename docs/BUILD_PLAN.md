@@ -1,7 +1,6 @@
 # Build plan
 
-EZmd is developed in small launchable slices. A build should add one visible capability, keep the
-application runnable, add focused tests, and stop.
+EZmd is developed in small launchable slices. A build should add one visible capability, keep the application runnable, add focused tests, and stop.
 
 ## Completed
 
@@ -11,26 +10,57 @@ New/Open/Save, safe UTF-8 files, unsaved-change protection, native window, and v
 
 ### Build 02 — Formatting toolbar
 
-Paragraph/H1/H2/H3, bold, italic, strikethrough, bullet and numbered lists, blockquotes, and native
-Undo/Redo.
+Paragraph/H1/H2/H3, bold, italic, strikethrough, bullet and numbered lists, blockquotes, and native Undo/Redo.
 
-## Reset
+## Next
 
-### Build 03 — Durable rich-document persistence
+### Build 03 — Qt Markdown persistence
 
-The earlier Build 03 designs and experiments are not accepted production work.
+Make the existing visual document durable using Qt's native Markdown reader and writer.
 
-Before writing Build 03 again, the owner will decide:
+The user-facing goal is deliberately simple:
 
-- which durable file format best fits EZmd;
-- what "portable" must mean in practice;
-- which formatting must survive round-trip;
-- whether native Qt conversion is sufficient;
-- what evidence would justify any additional parser/serializer dependency or code.
+> Open a document, work on it visually, save it, reopen it, and see the same supported content and formatting without needing to know that Markdown is involved.
 
-Until that discussion is complete, there is no Build 03 implementation contract.
+Exact implementation and acceptance requirements are in docs/builds/03-qt-markdown-persistence.md.
 
-## Later work
+Build 03 does not expand the toolbar, add Markdown syntax UI, add compatibility code for every Markdown flavor, or introduce another parser.
 
-Sidebar, search, quick-open, links, backlinks, encryption, and other ideas remain uncommitted future
-work. They will receive their own build contract only when they become the next task.
+## Direction after Build 03
+
+These are planning areas, not active implementation contracts.
+
+### Desktop completeness pass
+
+Before adding advanced knowledge-management features, make the application behave like a complete desktop editor. Candidate work includes normal editing commands, Save As, predictable shortcuts, recent/open flows, drag/drop where useful, links behaving naturally, clear feedback, sensible dialogs, and other small expectations discovered through real use.
+
+This pass should be broken into small slices rather than one large rewrite.
+
+### UI design and polish pass
+
+Define a coherent visual and interaction system for the application.
+
+Use Figma if useful to explore:
+
+- overall window layout;
+- toolbar/menu hierarchy;
+- typography and spacing;
+- sidebar/workspace layouts;
+- empty states;
+- dialogs and lightweight feedback;
+- interaction flows.
+
+Figma designs are references for the native Qt implementation, not a reason to introduce a web runtime or generated UI architecture.
+
+### Workspace features
+
+After the basic editor feels complete, add organization and navigation in small slices. Likely areas include:
+
+- a simple collapsible and toggleable document sidebar;
+- document navigation;
+- full-text search;
+- quick open;
+- links and link navigation;
+- backlinks or related-document features only when the simpler linking workflow exists first.
+
+Do not implement these from this roadmap alone. Each receives its own precise build document when it becomes the next approved slice.
