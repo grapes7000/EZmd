@@ -1,121 +1,42 @@
 # Architecture
 
-## Status
+This document describes the code that exists on `main` today.
 
-Accepted baseline. Change architectural direction only through an explicit decision record.
+## Runtime
 
-## Core idea
+`src/ezmd/app.py` creates one `QApplication` and one `MainWindow`.
 
-The application is divided into small areas with clear responsibilities.
+`MainWindow` owns the current file path, menus, toolbar, visual editor, unsaved-change flow, and
+New/Open/Save actions.
 
-```text
-PySide6 Qt Widgets
-        ↓
-QTextEdit / QTextDocument
-        ↓
-Document operations
-        ↓
-Markdown files on disk
+The editor is a `QTextEdit` subclass backed by Qt's single `QTextDocument`. There is no second
+document model.
 
-Optional derived systems:
-Markdown files → search index
-Markdown files → wiki-link graph
-Markdown files → optional connection suggestions
-```
+## Production modules
 
-## Primary UI architecture
+- `src/ezmd/core/files.py` — UTF-8 reads and safe replacement writes with `QSaveFile`.
+- `src/ezmd/ui/main_window.py` — window construction, actions, editor state, and file workflow.
+- `src/ezmd/ui/formatting.py` — semantic formatting operations on the Qt document.
+- `src/ezmd/ui/quote_editor.py` — paints the blockquote rail without storing presentation text.
+- `src/ezmd/ui/visual_profiles.py` — presentation geometry and system-derived colors.
+- `src/ezmd/app.py` — application entry point.
 
-The primary UI uses PySide6 **Qt Widgets**. QML/Qt Quick is not part of the initial architecture.
-Qt WebEngine is not part of the core editor.
+## Boundaries
 
-The central editable document should remain close to `QTextEdit`/`QTextDocument`. Formatting and
-Markdown serialization should work with that native document model rather than maintaining a
-second editor or browser preview as the real state.
+- Core file I/O must not depend on UI code.
+- Presentation code must not become the source of document meaning.
+- User-visible document state lives in the Qt document, not in a shadow buffer.
+- File writes must remain safe on failure.
+- Normal editing must not depend on WebEngine, QML/Qt Quick, or network clients.
+- Add a production module only when it has one clear responsibility that improves readability.
 
-Build 01 established the real native editor shell. Build 02 adds the first controlled rich-text
-vocabulary directly to that same document model; it does not introduce a second representation.
+## Current persistence
 
-## Source of truth
+The production editor opens and saves plain text. Rich formatting exists only in the live
+`QTextDocument`. Durable rich formatting is the next architecture decision, not an implemented
+feature.
 
-Markdown files are user data and remain authoritative.
+## Change rule
 
-While a document is open, its Qt document is the editable in-memory state. Saving serializes the
-supported document state back to Markdown. Derived databases/caches must never silently become
-the only copy of user content.
-
-Build 02 is an explicitly transitional pre-round-trip development slice: its new rich formatting
-is in-memory only while Save still writes plain text. Build 03 is responsible for restoring the
-normal architectural rule above by defining durable rich document ↔ Markdown serialization.
-
-Any database used for search, graph acceleration, previews, recent-file metadata, or other
-derived information must be safe to delete and rebuild.
-
-## Planned areas
-
-### `core/`
-
-Rules and operations central to documents and application behavior. Keep this independent from
-visual styling and later feature implementations wherever practical.
-
-### `ui/`
-
-Qt Widgets and visual interaction. UI code should compose controls and invoke document operations;
-it should not quietly become the owner of storage rules.
-
-Visual measurements belong in the small semantic visual-profile system described in
-`docs/UI_SYSTEM.md`.
-
-### `features/`
-
-Optional/later capabilities such as search, wiki links, graph view, and encryption. A feature
-should have a narrow public boundary with core behavior.
-
-## Dependency direction
-
-Higher-level features may call stable core operations.
-
-Core document code must not depend on later features such as graph view, search suggestions, or
-semantic analysis.
-
-UI styling must not own document behavior. Document behavior must not know whether the active
-visual profile is Lab, QTemp, or Focus.
-
-## Expensive work
-
-Normal typing is sacred. Full-vault scanning, indexing, graph layout, encryption of unrelated
-files, and semantic analysis must never run synchronously on every keystroke.
-
-The Qt UI thread must stay free of avoidable expensive work.
-
-## Cross-platform boundary
-
-Linux, macOS, and Windows are first-class platform families. Portable Qt/standard-library APIs are
-preferred over OS-specific branches. See `docs/PLATFORM_SUPPORT.md`.
-
-## Deliberately absent architecture
-
-Do not introduce without a later accepted decision:
-
-- QML/Qt Quick primary UI;
-- Qt WebEngine/editor browser stack;
-- plugin discovery/framework;
-- dependency-injection container;
-- general event bus;
-- background daemon/service;
-- network service requirement;
-- SQLite as the primary document store.
-
-A modular future workspace with panels/splits does not by itself justify any of those systems.
-Current deferred workspace reasoning is recorded in `docs/FUTURE_IDEAS.md`.
-
-## Future architecture questions
-
-These remain intentionally deferred until the build that needs them:
-
-- Build 03's exact Markdown parsing/serialization/normalization rules for the controlled Build 02
-  formatting vocabulary;
-- how later links/images/task lists extend the controlled document model without undermining
-  portable Markdown;
-- autosave/recovery behavior and its interaction with later encryption;
-- exact wiki-link parsing boundary;
-- how optional semantic features remain isolated if they are ever added.
+Do not design infrastructure for a hypothetical future feature. Add the smallest thing required by
+the active build, then reevaluate with real behavior and tests.
