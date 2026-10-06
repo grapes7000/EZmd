@@ -26,19 +26,41 @@ Exact implementation and acceptance requirements are in docs/builds/03-qt-markdo
 
 Build 03 does not expand the toolbar, add Markdown syntax UI, add compatibility code for every Markdown flavor, or introduce another parser.
 
-## Direction after Build 03
+## Immediately after Build 03 acceptance
+
+### Desktop shell and visual-system planning
+
+Before adding new workspace features, define and implement the first focused UI shell slice.
+
+The approved direction is a compact native writing workspace with a resizable/collapsible sidebar,
+a centered page-like writing surface, a compact action/formatting strip, a top-left application
+menu direction, and a subtle development/status strip that identifies the running build.
+
+EZmd should inherit visual rules from grapes7000/qt-app-template—semantic colors, compact spacing,
+restrained radii, small desktop typography, control sizing, separators, and state treatment—without
+copying its QML application shell or changing EZmd away from Qt Widgets.
+
+The page-like writing surface is initially presentation only. Letter-paper proportions may guide
+the visual width, but real page layout, durable margins, and pagination are not yet approved
+document features.
+
+The current design direction and open planning decisions are recorded in docs/UI_DIRECTION.md.
+Do not start production UI work from this roadmap entry alone. First write and approve a precise
+slice plan.
+
+## Direction after the shell
 
 These are planning areas, not active implementation contracts.
 
 ### Desktop completeness pass
 
-Before adding advanced knowledge-management features, make the application behave like a complete desktop editor. Candidate work includes normal editing commands, Save As, predictable shortcuts, recent/open flows, drag/drop where useful, links behaving naturally, clear feedback, sensible dialogs, and other small expectations discovered through real use.
+Make the application behave like a complete desktop editor. Candidate work includes normal editing commands, Save As, predictable shortcuts, recent/open flows, drag/drop where useful, links behaving naturally, clear feedback, sensible dialogs, and other small expectations discovered through real use.
 
 This pass should be broken into small slices rather than one large rewrite.
 
 ### UI design and polish pass
 
-Define a coherent visual and interaction system for the application.
+Continue refining the visual and interaction system after the initial shell establishes the shared design language.
 
 Use Figma if useful to explore:
 
@@ -56,8 +78,7 @@ Figma designs are references for the native Qt implementation, not a reason to i
 
 After the basic editor feels complete, add organization and navigation in small slices. Likely areas include:
 
-- a simple collapsible and toggleable document sidebar;
-- document navigation;
+- document navigation within the sidebar shell;
 - full-text search;
 - quick open;
 - links and link navigation;
