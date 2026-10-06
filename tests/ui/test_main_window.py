@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QByteArray, QMimeData, QSaveFile, Qt, QTimer
-from PySide6.QtGui import QFont, QKeySequence, QTextCursor
+from PySide6.QtGui import QFont, QKeySequence, QTextCursor, QTextDocument, QTextFormat
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox, QToolButton
 from pytestqt.qtbot import QtBot
@@ -187,7 +187,7 @@ def test_save_writes_before_close(
     save_to(monkeypatch, str(path))
     choose_prompt(QMessageBox.StandardButton.Save)
     assert window.close()
-    assert path.read_text(encoding="utf-8") == "Important"
+    assert path.read_text(encoding="utf-8") == "Important\n\n"
 
 
 def test_discard_allows_close(qtbot: QtBot, window: MainWindow) -> None:
@@ -211,7 +211,7 @@ def test_discard_and_save_choices_only_proceed_when_allowed(
     save_to(monkeypatch, str(path))
     choose_prompt(QMessageBox.StandardButton.Save)
     window.new_action.trigger()
-    assert path.read_text(encoding="utf-8") == "Keep"
+    assert path.read_text(encoding="utf-8") == "Keep\n\n"
     assert window.editor.toPlainText() == ""
     assert window.current_path is None
 
@@ -230,10 +230,11 @@ def test_first_save_and_later_save_use_same_unicode_path(
     window.editor.insertPlainText("é")
     save_to(monkeypatch, str(path))
     window.save_action.trigger()
-    assert path.read_bytes() == "Café".encode()
+    assert path.read_text(encoding="utf-8") == "Café\n\n"
     assert window.current_path == path
     assert not window.editor.document().isModified()
-    assert path.name in window.windowTitle()
+    assert path.stem in window.windowTitle()
+    assert path.name not in window.windowTitle()
 
     type_text(window, " encore")
 
@@ -242,7 +243,7 @@ def test_first_save_and_later_save_use_same_unicode_path(
 
     monkeypatch.setattr(QFileDialog, "getSaveFileName", unexpected_picker)
     window.save_action.trigger()
-    assert path.read_text(encoding="utf-8") == "Café encore"
+    assert path.read_text(encoding="utf-8") == "Café encore\n\n"
     assert not window.editor.document().isModified()
 
 
@@ -258,17 +259,149 @@ def test_cancel_save_destination_leaves_document_and_disk_unchanged(
     assert list(tmp_path.iterdir()) == []
 
 
-def test_open_utf8_file_loads_plain_text_path_and_clean_state(
+def test_open_utf8_markdown_file_loads_visual_document_path_and_clean_state(
     qtbot: QtBot, window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "note 文書.markdown"
     path.write_text("# Café\n", encoding="utf-8")
     open_from(monkeypatch, str(path))
     window.open_action.trigger()
-    assert window.editor.toPlainText() == "# Café\n"
+    assert window.editor.toPlainText() == "Café"
+    assert window.editor.document().firstBlock().blockFormat().headingLevel() == 1
     assert window.current_path == path
     assert not window.editor.document().isModified()
-    assert path.name in window.windowTitle()
+    assert path.stem in window.windowTitle()
+    assert path.name not in window.windowTitle()
+
+
+def test_opened_markdown_has_no_load_undo_and_edits_use_native_history(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "heading.md"
+    path.write_text("# Heading\n", encoding="utf-8")
+    open_from(monkeypatch, str(path))
+    window.open_document()
+    document = window.editor.document()
+    assert window.style_selector.currentText() == "H1"
+    assert not document.isModified()
+    assert not document.isUndoAvailable()
+    assert not window.undo_action.isEnabled()
+    assert window.editor.hasFocus()
+
+    window.editor.moveCursor(QTextCursor.MoveOperation.End)
+    type_text(window, "!")
+    assert window.editor.toPlainText() == "Heading!"
+    assert document.isModified()
+    assert window.undo_action.isEnabled()
+    assert "heading *" in window.windowTitle()
+    window.undo_action.trigger()
+    assert window.editor.toPlainText() == "Heading"
+    window.redo_action.trigger()
+    assert window.editor.toPlainText() == "Heading!"
+
+
+def test_failed_markdown_load_preserves_live_document_and_path(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old_path = tmp_path / "old.md"
+    old_path.write_text("# Original\n", encoding="utf-8")
+    open_from(monkeypatch, str(old_path))
+    window.open_document()
+    window.editor.moveCursor(QTextCursor.MoveOperation.End)
+    type_text(window, " draft")
+    document = window.editor.document()
+    cursor = window.editor.textCursor()
+    cursor.setPosition(1)
+    cursor.setPosition(4, QTextCursor.MoveMode.KeepAnchor)
+    window.editor.setTextCursor(cursor)
+    undo_steps = document.availableUndoSteps()
+
+    def failed_load(_document: QTextDocument, _text: str) -> None:
+        raise RuntimeError("could not load")
+
+    monkeypatch.setattr(QTextDocument, "setMarkdown", failed_load)
+    open_from(monkeypatch, str(tmp_path / "next.md"))
+    (tmp_path / "next.md").write_text("# Next\n", encoding="utf-8")
+    errors: list[str] = []
+    record_error(monkeypatch, errors)
+    choose_prompt(QMessageBox.StandardButton.Discard)
+    window.open_document()
+    assert errors and "could not load" in errors[0]
+    assert window.editor.document() is document
+    assert window.editor.toPlainText() == "Original draft"
+    assert (window.editor.textCursor().anchor(), window.editor.textCursor().position()) == (1, 4)
+    assert document.availableUndoSteps() == undo_steps
+    assert document.isModified()
+    assert window.current_path == old_path
+
+
+def test_normal_editing_does_not_convert_markdown(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "draft.md"
+    path.write_text("# Heading\n", encoding="utf-8")
+    open_from(monkeypatch, str(path))
+    window.open_document()
+
+    def unexpected_conversion(*_args: object) -> None:
+        pytest.fail("Markdown conversion ran outside Open or Save")
+
+    monkeypatch.setattr(QTextDocument, "setMarkdown", unexpected_conversion)
+    monkeypatch.setattr(QTextDocument, "toMarkdown", unexpected_conversion)
+    window.editor.moveCursor(QTextCursor.MoveOperation.End)
+    type_text(window, "!")
+    window.style_selector.setCurrentIndex(2)
+    window.profile_actions["Lab"].trigger()
+    window.editor.moveCursor(QTextCursor.MoveOperation.Start)
+    window.undo_action.trigger()
+    window.redo_action.trigger()
+
+
+def test_text_file_stays_literal_after_markdown_open(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    markdown = tmp_path / "first.md"
+    markdown.write_text("# Heading\n", encoding="utf-8")
+    open_from(monkeypatch, str(markdown))
+    window.open_document()
+
+    path = tmp_path / "literal.txt"
+    path.write_text("# Heading **literal**", encoding="utf-8")
+    open_from(monkeypatch, str(path))
+    window.open_document()
+    assert window.editor.toPlainText() == "# Heading **literal**"
+    assert window.style_selector.currentText() == "Paragraph"
+    assert not window.editor.document().isModified()
+    window.editor.moveCursor(QTextCursor.MoveOperation.End)
+    type_text(window, " text")
+    assert window.save_document()
+    assert path.read_text(encoding="utf-8") == "# Heading **literal** text"
+    assert not window.editor.document().isModified()
+
+
+@pytest.mark.parametrize(
+    ("selected_filter", "extension", "contents"),
+    [("", ".md", "# Heading\n\n"), ("Text (*.txt)", ".txt", "Heading")],
+)
+def test_extensionless_first_save_uses_document_or_explicit_text_choice(
+    window: MainWindow,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    selected_filter: str,
+    extension: str,
+    contents: str,
+) -> None:
+    type_text(window, "Heading")
+    window.style_selector.setCurrentIndex(1)
+    filename = tmp_path / "new document"
+
+    def selected(*_args: object) -> tuple[str, str]:
+        return str(filename), selected_filter
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", selected)
+    assert window.save_document()
+    assert window.current_path == filename.with_suffix(extension)
+    assert filename.with_suffix(extension).read_text(encoding="utf-8") == contents
 
 
 def test_open_after_saving_unsaved_work_keeps_the_old_file(
@@ -283,7 +416,7 @@ def test_open_after_saving_unsaved_work_keeps_the_old_file(
 
     choose_prompt(QMessageBox.StandardButton.Save)
     window.open_action.trigger()
-    assert old_path.read_text(encoding="utf-8") == "Old draft"
+    assert old_path.read_text(encoding="utf-8") == "Old draft\n\n"
     assert window.editor.toPlainText() == "Next document"
     assert window.current_path == next_path
     assert not window.editor.document().isModified()
@@ -334,6 +467,7 @@ def test_failed_save_preserves_document_path_and_old_disk_file(
     path.write_text("Old", encoding="utf-8")
     open_from(monkeypatch, str(path))
     window.open_action.trigger()
+    window.editor.moveCursor(QTextCursor.MoveOperation.End)
     type_text(window, " edit")
     before = window.editor.toPlainText()
 
@@ -349,6 +483,189 @@ def test_failed_save_preserves_document_path_and_old_disk_file(
     assert window.current_path == path
     assert window.editor.document().isModified()
     assert path.read_text(encoding="utf-8") == "Old"
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "  Leading text",
+        "First\n  Second",
+        "First\n",
+        "First\n\n",
+        "First\n\nSecond",
+        "First\n   \nSecond",
+        "  ",
+        "First\n   ",
+        "First\n\n\nSecond",
+        "\n\nFirst",
+        "  \u2063\u2063 text",
+    ),
+)
+def test_typed_paragraph_whitespace_survives_real_save_and_reopen(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str
+) -> None:
+    def unexpected_error(_parent: object, _title: str, message: str) -> None:
+        pytest.fail(message)
+
+    monkeypatch.setattr(QMessageBox, "critical", unexpected_error)
+    for index, line in enumerate(text.split("\n")):
+        if index:
+            QTest.keyClick(window.editor, Qt.Key.Key_Return)
+        if "\u2063" in line:
+            window.editor.insertPlainText(line)
+        else:
+            type_text(window, line)
+    assert window.editor.toPlainText() == text
+    before_blocks = [
+        window.editor.document().findBlockByNumber(index).text()
+        for index in range(window.editor.document().blockCount())
+    ]
+    path = tmp_path / "writing.md"
+    save_to(monkeypatch, str(path))
+    document = window.editor.document()
+    undo_steps = document.availableUndoSteps()
+    cursor_position = window.editor.textCursor().position()
+    assert window.save_document()
+    assert not document.isModified()
+    assert document.availableUndoSteps() == undo_steps
+    assert window.editor.textCursor().position() == cursor_position
+
+    window.new_document()
+    open_from(monkeypatch, str(path))
+    window.open_document()
+    assert window.editor.toPlainText() == text
+    assert [
+        window.editor.document().findBlockByNumber(index).text()
+        for index in range(window.editor.document().blockCount())
+    ] == before_blocks
+    assert not window.editor.document().isModified()
+
+
+@pytest.mark.parametrize(
+    ("heading", "action_names"),
+    [
+        (1, ()),
+        (0, ("bullet_action",)),
+        (0, ("numbered_action",)),
+        (0, ("quote_action", "numbered_action")),
+        (0, ("quote_action",)),
+    ],
+)
+def test_trailing_empty_structured_block_keeps_semantics_on_reopen(
+    window: MainWindow,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    heading: int,
+    action_names: tuple[str, ...],
+) -> None:
+    def unexpected_error(_parent: object, _title: str, message: str) -> None:
+        pytest.fail(message)
+
+    monkeypatch.setattr(QMessageBox, "critical", unexpected_error)
+    if heading:
+        window.style_selector.setCurrentIndex(heading)
+    for name in action_names:
+        getattr(window, name).trigger()
+    type_text(window, "Item")
+    QTest.keyClick(window.editor, Qt.Key.Key_Return)
+
+    def block_state() -> list[tuple[str, int, object, bool]]:
+        document = window.editor.document()
+        states: list[tuple[str, int, object, bool]] = []
+        for index in range(document.blockCount()):
+            block = document.findBlockByNumber(index)
+            text_list = block.textList()
+            states.append(
+                (
+                    block.text(),
+                    block.blockFormat().headingLevel(),
+                    text_list.format().style() if text_list else None,
+                    block.blockFormat().property(QTextFormat.Property.BlockQuoteLevel) == 1,
+                )
+            )
+        return states
+
+    before = block_state()
+    assert len(before) == 2 and before[1][0] == ""
+    path = tmp_path / "structured.md"
+    save_to(monkeypatch, str(path))
+    assert window.save_document()
+    window.new_document()
+    open_from(monkeypatch, str(path))
+    window.open_document()
+    assert block_state() == before
+
+
+def test_external_invisible_separator_is_not_decoded_without_ezmd_header(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unexpected_error(_parent: object, _title: str, message: str) -> None:
+        pytest.fail(message)
+
+    monkeypatch.setattr(QMessageBox, "critical", unexpected_error)
+    path = tmp_path / "external.md"
+    path.write_text("Before\u2063After\n", encoding="utf-8")
+    open_from(monkeypatch, str(path))
+    window.open_document()
+    assert window.editor.document().firstBlock().text() == "Before\u2063After"
+    assert window.save_document()
+    window.new_document()
+    window.open_document()
+    assert window.editor.document().firstBlock().text() == "Before\u2063After"
+
+
+def test_plain_text_save_does_not_validate_markdown(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "literal.txt"
+    path.write_text("Old", encoding="utf-8")
+    open_from(monkeypatch, str(path))
+    window.open_document()
+    type_text(window, " draft")
+
+    def unexpected_conversion(*_args: object) -> None:
+        pytest.fail("Plain text Save must not convert Markdown")
+
+    monkeypatch.setattr(QTextDocument, "toMarkdown", unexpected_conversion)
+    monkeypatch.setattr(QTextDocument, "setMarkdown", unexpected_conversion)
+    assert window.save_document()
+    assert path.read_text(encoding="utf-8") == " draftOld"
+
+
+def test_failed_semantic_validation_does_not_change_live_formatting(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "heading.md"
+    path.write_text("# Heading\n", encoding="utf-8")
+    open_from(monkeypatch, str(path))
+    window.open_document()
+    document = window.editor.document()
+    cursor = window.editor.textCursor()
+    block_format = cursor.blockFormat()
+    block_format.setProperty(QTextFormat.Property.BlockQuoteLevel, 1)
+    cursor.setBlockFormat(block_format)  # An external Qt edit can create an unsafe heading + quote.
+    assert document.firstBlock().blockFormat().headingLevel() == 1
+    assert document.firstBlock().blockFormat().property(QTextFormat.Property.BlockQuoteLevel) == 1
+    before = (
+        document.availableUndoSteps(),
+        document.isModified(),
+        window.editor.textCursor().position(),
+    )
+    errors: list[str] = []
+    record_error(monkeypatch, errors)
+
+    assert not window.save_document()
+    assert errors and "formatting" in errors[0]
+    assert path.read_text(encoding="utf-8") == "# Heading\n"
+    assert window.editor.document() is document
+    assert document.firstBlock().blockFormat().headingLevel() == 1
+    assert document.firstBlock().blockFormat().property(QTextFormat.Property.BlockQuoteLevel) == 1
+    assert (
+        document.availableUndoSteps(),
+        document.isModified(),
+        window.editor.textCursor().position(),
+    ) == before
+    assert window.current_path == path
 
 
 def test_failed_first_save_keeps_untitled_draft_unassociated(

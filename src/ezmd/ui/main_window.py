@@ -8,7 +8,10 @@ from PySide6.QtGui import (
     QAction,
     QActionGroup,
     QCloseEvent,
+    QFont,
     QKeySequence,
+    QTextDocument,
+    QTextFormat,
     QTextListFormat,
 )
 from PySide6.QtWidgets import (
@@ -23,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from ezmd.core.files import read_text, write_text
-from ezmd.ui import formatting
+from ezmd.ui import formatting, markdown_whitespace
 from ezmd.ui.quote_editor import QuoteTextEdit
 from ezmd.ui.visual_profiles import (
     DEFAULT_PROFILE,
@@ -32,6 +35,44 @@ from ezmd.ui.visual_profiles import (
     heading_point_size,
     system_colors,
 )
+
+
+def document_semantics(document: QTextDocument) -> tuple[tuple[object, ...], ...]:
+    """Compare supported meaning, combining adjacent fragments with the same inline flags."""
+    blocks: list[tuple[object, ...]] = []
+    block = document.begin()
+    while block.isValid():
+        text_list = block.textList()
+        list_style = text_list.format().style() if text_list else None
+        runs: list[tuple[str, bool, bool, bool]] = []
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            text = fragment.text()
+            if text:
+                fmt = fragment.charFormat()
+                flags = (
+                    fmt.fontWeight() >= QFont.Weight.Bold,
+                    fmt.fontItalic(),
+                    fmt.fontStrikeOut(),
+                )
+                if runs and runs[-1][1:] == flags:
+                    previous = runs[-1]
+                    runs[-1] = (previous[0] + text, *flags)
+                else:
+                    runs.append((text, *flags))
+            iterator += 1
+        blocks.append(
+            (
+                block.text(),
+                block.blockFormat().headingLevel(),
+                list_style,
+                block.blockFormat().property(QTextFormat.Property.BlockQuoteLevel) == 1,
+                tuple(runs),
+            )
+        )
+        block = block.next()
+    return tuple(blocks)
 
 
 class MainWindow(QMainWindow):
@@ -86,10 +127,7 @@ class MainWindow(QMainWindow):
 
         self.undo_action.setEnabled(False)
         self.redo_action.setEnabled(False)
-        document = self.editor.document()
-        document.undoAvailable.connect(self.undo_action.setEnabled)
-        document.redoAvailable.connect(self.redo_action.setEnabled)
-        document.modificationChanged.connect(self._update_title)
+        self._connect_document_signals(self.editor.document())
 
         for action, glyph in ((self.undo_action, "↶"), (self.redo_action, "↷")):
             action.setIconText(glyph)
@@ -170,6 +208,14 @@ class MainWindow(QMainWindow):
     def _apply_style(self, level: int) -> None:
         if level < 0:
             return
+        if level and any(
+            block.blockFormat().property(QTextFormat.Property.BlockQuoteLevel) == 1
+            and not block.textList()
+            for block in formatting.affected_blocks(self.editor.textCursor())
+        ):
+            # A quoted heading cannot survive Qt Markdown. Leave quoted text untouched.
+            self._after_formatting()
+            return
         formatting.apply_block_style(self.editor, level, heading_point_size(self.editor, level))
         self._after_formatting()
 
@@ -178,14 +224,26 @@ class MainWindow(QMainWindow):
         self._after_formatting()
 
     def _toggle_list(self, style: QTextListFormat.Style) -> None:
+        cursor = self.editor.textCursor()
+        cursor.beginEditBlock()
+        if formatting.list_style(cursor) != style and any(
+            block.blockFormat().headingLevel() for block in formatting.affected_blocks(cursor)
+        ):
+            # One action must normalize the heading and apply the list in one Undo step.
+            formatting.apply_block_style(self.editor, 0, heading_point_size(self.editor, 0))
         formatting.toggle_list(self.editor, style)
+        cursor.endEditBlock()
         self._after_formatting()
 
     def _toggle_quote(self) -> None:
-        formatting.toggle_quote(self.editor)
+        cursor = self.editor.textCursor()
+        cursor.beginEditBlock()
+        formatting.toggle_quote(self.editor, heading_point_size(self.editor, 0))
+        cursor.endEditBlock()
         self._after_formatting()
 
     def _after_formatting(self) -> None:
+        self._sync_formatting()
         self.editor.setFocus()
 
     def _sync_formatting(self) -> None:
@@ -202,8 +260,17 @@ class MainWindow(QMainWindow):
         self.numbered_action.setChecked(list_style == QTextListFormat.Style.ListDecimal)
         self.quote_action.setChecked(formatting.quote_active(cursor))
 
+    def _connect_document_signals(self, document: QTextDocument) -> None:
+        """Keep window actions and title bound to the editor's current document."""
+        document.undoAvailable.connect(self.undo_action.setEnabled)
+        document.redoAvailable.connect(self.redo_action.setEnabled)
+        document.modificationChanged.connect(self._update_title)
+
     def _update_title(self) -> None:
-        name = self.current_path.name if self.current_path is not None else "Untitled"
+        name = "Untitled"
+        if self.current_path is not None:
+            path = self.current_path
+            name = path.stem if path.suffix.lower() in (".md", ".markdown") else path.name
         modified = self.editor.document().isModified()
         self.setWindowTitle(f"{name}{' *' if modified else ''} — EZmd")
 
@@ -249,7 +316,7 @@ class MainWindow(QMainWindow):
             self,
             "Open Document",
             "",
-            "Markdown and Text (*.md *.markdown *.txt);;All Files (*)",
+            "Documents (*.md *.markdown *.txt);;All Files (*)",
         )
         if not filename:
             return
@@ -261,7 +328,34 @@ class MainWindow(QMainWindow):
                 self, "Could not open document", f"Could not open {path.name}: {error}"
             )
             return
-        self.editor.setPlainText(text)
+        if path.suffix.lower() in (".md", ".markdown"):
+            # Parse separately so a load failure cannot discard the live document.
+            loaded_document = QTextDocument(self.editor)
+            # setMarkdown creates undo commands; opening a file is not a user edit.
+            loaded_document.setUndoRedoEnabled(False)
+            try:
+                loaded_document.setMarkdown(text)
+                markdown_whitespace.restore(loaded_document, text)
+            except (RuntimeError, ValueError) as error:
+                loaded_document.deleteLater()
+                QMessageBox.critical(
+                    self, "Could not open document", f"Could not open {path.name}: {error}"
+                )
+                return
+            loaded_document.setModified(False)
+            loaded_document.setUndoRedoEnabled(True)
+            old_document = self.editor.document()
+            old_document.undoAvailable.disconnect(self.undo_action.setEnabled)
+            old_document.redoAvailable.disconnect(self.redo_action.setEnabled)
+            old_document.modificationChanged.disconnect(self._update_title)
+            self.editor.setDocument(loaded_document)
+            # setDocument replaces the QTextDocument, so its signals no longer reach the window.
+            self._connect_document_signals(loaded_document)
+            self.undo_action.setEnabled(False)
+            self.redo_action.setEnabled(False)
+            self._sync_formatting()
+        else:
+            self.editor.setPlainText(text)
         self.current_path = path
         self.editor.document().setModified(False)
         self._update_title()
@@ -270,18 +364,30 @@ class MainWindow(QMainWindow):
     def save_document(self) -> bool:
         path = self.current_path
         if path is None:
-            filename, _ = QFileDialog.getSaveFileName(
+            filename, selected_filter = QFileDialog.getSaveFileName(
                 self,
                 "Save Document",
                 "",
-                "Markdown (*.md *.markdown);;Text (*.txt);;All Files (*)",
+                "Documents (*.md *.markdown);;Text (*.txt);;All Files (*)",
             )
             if not filename:
                 return False
             path = Path(filename)
+            if not path.suffix:
+                path = path.with_suffix(".txt" if selected_filter == "Text (*.txt)" else ".md")
         try:
-            write_text(path, self.editor.toPlainText())
-        except (OSError, UnicodeError) as error:
+            if path.suffix.lower() in (".md", ".markdown"):
+                live = self.editor.document()
+                text = markdown_whitespace.serialize(live)
+                verification = QTextDocument()
+                verification.setMarkdown(text)
+                markdown_whitespace.restore(verification, text)
+                if document_semantics(live) != document_semantics(verification):
+                    raise ValueError("saving would change this document's text or formatting")
+            else:
+                text = self.editor.toPlainText()
+            write_text(path, text)
+        except (OSError, UnicodeError, RuntimeError, ValueError) as error:
             QMessageBox.critical(
                 self, "Could not save document", f"Could not save {path.name}: {error}"
             )
