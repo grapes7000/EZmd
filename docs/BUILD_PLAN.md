@@ -52,6 +52,22 @@ Use Figma if useful to explore:
 
 Figma designs are references for the native Qt implementation, not a reason to introduce a web runtime or generated UI architecture.
 
+### Proofreading
+
+A later proofreading slice may combine fast word-level spellcheck with delayed local grammar/style
+checking. The intended architecture keeps proofreading out of the editor hot path: lightweight
+spelling can react to completed words, while LanguageTool checks only changed paragraphs after a
+typing pause in a background worker and starts lazily rather than during application launch.
+
+Disposable local measurements showed paragraph-sized LanguageTool checks are fast enough for this
+approach, but the Java process is memory-heavy, so whole-document checks and permanent eager
+startup are not appropriate. A later slice should also evaluate shutting the grammar process down
+after inactivity.
+
+The measurements, proposed worker boundaries, stale-result handling, and resource policy are
+recorded in docs/PROOFREADING_RESEARCH.md. This is research only; it is not permission to add
+proofreading dependencies or implementation before a dedicated build contract is approved.
+
 ### Workspace features
 
 After the basic editor feels complete, add organization and navigation in small slices. Likely areas include:
