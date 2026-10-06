@@ -53,6 +53,18 @@ def character_states(editor: QTextEdit) -> tuple[bool, bool, bool]:
 def toggle_character(editor: QTextEdit, kind: str) -> None:
     cursor = editor.textCursor()
     enabled = not character_states(editor)[("bold", "italic", "strike").index(kind)]
+    if (
+        enabled
+        and kind in ("strike", "italic")
+        and any(block.blockFormat().headingLevel() for block in affected_blocks(cursor))
+    ):
+        return
+    if (
+        kind == "bold"
+        and not enabled
+        and any(block.blockFormat().headingLevel() for block in affected_blocks(cursor))
+    ):
+        return
     fmt = QTextCharFormat()
     if kind == "bold":
         fmt.setFontWeight(QFont.Weight.Bold if enabled else QFont.Weight.Normal)
@@ -60,6 +72,12 @@ def toggle_character(editor: QTextEdit, kind: str) -> None:
         fmt.setFontItalic(enabled)
     else:
         fmt.setFontStrikeOut(enabled)
+    # Qt's Markdown writer crosses emphasis delimiters when strike overlaps emphasis.
+    if enabled and kind in ("bold", "italic"):
+        fmt.setFontStrikeOut(False)
+    elif enabled:
+        fmt.setFontWeight(QFont.Weight.Normal)
+        fmt.setFontItalic(False)
     if cursor.hasSelection():
         cursor.beginEditBlock()
         cursor.mergeCharFormat(fmt)
@@ -77,11 +95,23 @@ def apply_block_style(editor: QTextEdit, level: int, point_size: float) -> None:
     cursor = editor.textCursor()
     char_fmt = QTextCharFormat()
     char_fmt.setFontPointSize(point_size)
+    if level:
+        char_fmt.setFontWeight(QFont.Weight.Bold)
+        char_fmt.setFontItalic(False)
+        char_fmt.setFontStrikeOut(False)
     cursor.beginEditBlock()
     for block in affected_blocks(cursor):
         block_cursor = QTextCursor(block)
+        was_list_item = bool(block.textList())
+        if level and was_list_item:
+            # A heading is a standalone block; remove both structures from a quoted list.
+            block.textList().remove(block)
         fmt = block.blockFormat()
-        fmt.setHeadingLevel(level)
+        if level and was_list_item and fmt.hasProperty(QUOTE_LEVEL):
+            fmt.clearProperty(QUOTE_LEVEL)
+            fmt.setIndent(0)
+        # Qt Markdown cannot import a quoted heading; retain Quote as Paragraph.
+        fmt.setHeadingLevel(0 if level and fmt.property(QUOTE_LEVEL) == 1 else level)
         block_cursor.setBlockFormat(fmt)
         # Qt draws list markers with the block character format, not text fragments.
         block_cursor.mergeBlockCharFormat(char_fmt)
@@ -136,27 +166,27 @@ def toggle_list(editor: QTextEdit, style: QTextListFormat.Style) -> None:
 
 
 def quote_active(cursor: QTextCursor) -> bool:
-    return all(
-        not block.textList() and block.blockFormat().property(QUOTE_LEVEL) == 1
-        for block in affected_blocks(cursor)
-    )
+    return all(block.blockFormat().property(QUOTE_LEVEL) == 1 for block in affected_blocks(cursor))
 
 
-def toggle_quote(editor: QTextEdit) -> None:
+def toggle_quote(editor: QTextEdit, paragraph_point_size: float) -> None:
     cursor = editor.textCursor()
     removing = quote_active(cursor)
     cursor.beginEditBlock()
     for block in affected_blocks(cursor):
-        text_list = block.textList()
-        if text_list:
-            text_list.remove(block)
+        if not removing and block.textList():
+            block.textList().remove(block)
         block_cursor = QTextCursor(block)
         fmt = block.blockFormat()
         if removing:
             fmt.clearProperty(QUOTE_LEVEL)
         else:
             fmt.setProperty(QUOTE_LEVEL, 1)
-        # Indentation is presentation, not the semantic test for a quote.
-        fmt.setIndent(0 if removing else 1)
+        # Block indentation serializes as code inside a quote; the painted rail provides its cue.
+        fmt.setIndent(0)
         block_cursor.setBlockFormat(fmt)
     cursor.endEditBlock()
+    if not removing and any(
+        block.blockFormat().headingLevel() for block in affected_blocks(cursor)
+    ):
+        apply_block_style(editor, 0, paragraph_point_size)

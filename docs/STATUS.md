@@ -16,9 +16,11 @@ Complete and merged. The live Qt document supports Paragraph/H1/H2/H3, bold, ita
 
 ### Build 03 — Qt Markdown persistence
 
-Specified and ready for implementation. It is not yet implemented on main.
+Implemented in the current working tree; owner manual acceptance and cross-platform CI are still
+required before it can be called complete.
 
-The slice will use Qt's native Markdown conversion only:
+The slice uses Qt's native Markdown conversion, with one focused encoding for whitespace that
+Qt would otherwise delete:
 
     Markdown file
     → QTextDocument.setMarkdown(...)
@@ -26,17 +28,20 @@ The slice will use Qt's native Markdown conversion only:
     → QTextDocument.toMarkdown()
     → Markdown file
 
-The user should open a document, work visually, save it, reopen it, and see the same supported content and formatting without needing to know or interact with Markdown syntax.
+The user should open a document, work visually, save it, reopen it, and see the same supported
+content and formatting without needing to know or interact with Markdown syntax. Save checks the
+native Qt conversion before replacing a Markdown file and reports a failure if content or
+formatting would change. Leading spaces and empty paragraphs are encoded on a temporary copy
+and restored when the document is opened.
 
 See docs/builds/03-qt-markdown-persistence.md for the exact contract.
 
 ## Important current behavior
 
-Until Build 03 is merged:
+Until Build 03 is accepted and merged:
 
-- .md, .markdown, and .txt files are still opened as UTF-8 plain text.
-- Save still writes editor.toPlainText().
-- Build 02 visual formatting therefore does not survive save/reopen.
+- The in-progress Markdown implementation and its safety checks are in the working tree.
+- The documented Build 03 safe formatting profile is tested locally but awaits owner acceptance.
 - The only production dependency is PySide6.
 - Linux, macOS, and Windows are first-class targets.
 - Qt Widgets is the current UI technology.

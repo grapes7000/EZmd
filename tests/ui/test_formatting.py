@@ -206,7 +206,7 @@ def test_clicking_toolbar_format_keeps_selection_and_typing_focus(window: MainWi
 
 
 @pytest.mark.parametrize("level", [0, 1, 2, 3])
-def test_paragraph_style_applies_to_whole_blocks_and_preserves_inline_emphasis(
+def test_block_style_applies_to_whole_blocks_and_normalizes_heading_emphasis(
     window: MainWindow, level: int
 ) -> None:
     window.editor.setPlainText("one\ntwo\nthree")
@@ -228,18 +228,18 @@ def test_paragraph_style_applies_to_whole_blocks_and_preserves_inline_emphasis(
     assert headings(window) == [level, level, 0]
     select(window, 1, 1)
     assert window.bold_action.isChecked()
-    assert window.italic_action.isChecked()
+    assert window.italic_action.isChecked() == (level == 0)
 
 
-def test_heading_presentation_does_not_imply_inline_bold_or_italic(window: MainWindow) -> None:
+def test_headings_use_explicit_bold_without_italic(window: MainWindow) -> None:
     window.editor.setPlainText("Heading\nBody")
     for level in (1, 2, 3, 0):
         select(window, 2, 2)
         window.style_selector.setCurrentIndex(level)
         assert headings(window) == [level, 0]
-        assert not window.bold_action.isChecked()
+        assert window.bold_action.isChecked()
         assert not window.italic_action.isChecked()
-        assert char_format(window, 2).fontWeight() == QFont.Weight.Normal
+        assert char_format(window, 2).fontWeight() >= QFont.Weight.Bold
         assert not char_format(window, 2).fontItalic()
 
 
@@ -248,7 +248,7 @@ def test_new_heading_styles_text_typed_into_an_empty_block(window: MainWindow) -
     assert headings(window) == [1]
     QTest.keyClicks(window.editor, "Title")
     assert headings(window) == [1]
-    assert not window.bold_action.isChecked()
+    assert window.bold_action.isChecked()
     assert char_format(window, 1).fontPointSize() > 0
 
 
@@ -398,7 +398,7 @@ def test_list_enter_and_backspace_reapply_remains_top_level(
         ("numbered_action", "quote_action", "numbered_action", "quote_action"),
     ],
 )
-def test_quote_list_conversions_are_exclusive_normalized_and_one_undo_step(
+def test_quote_and_list_are_mutually_exclusive_in_one_undo_step(
     window: MainWindow, names: tuple[str, ...]
 ) -> None:
     window.editor.setPlainText("item")
@@ -409,27 +409,27 @@ def test_quote_list_conversions_are_exclusive_normalized_and_one_undo_step(
         assert after != before
         assert window.editor.toPlainText() == "item"
         if name == "quote_action":
-            assert after == (0, None, 1, 1)
-            assert window.quote_action.isChecked()
-            assert not window.bullet_action.isChecked()
-            assert not window.numbered_action.isChecked()
+            assert after == (0, None, None if before[2] == 1 else 1, 0)
         else:
             style = (
                 QTextListFormat.Style.ListDisc
                 if name == "bullet_action"
                 else QTextListFormat.Style.ListDecimal
             )
-            assert after == (0, style, None, 0)
-            assert window.editor.document().begin().textList().format().indent() == 1
-            assert not window.quote_action.isChecked()
-            assert getattr(window, name).isChecked()
+            expected_style = None if before[1] == style else style
+            assert after == (0, expected_style, None, 0)
+            if expected_style is not None:
+                assert window.editor.document().begin().textList().format().indent() == 1
+        assert window.quote_action.isChecked() == (after[2] == 1)
+        assert window.bullet_action.isChecked() == (after[1] == QTextListFormat.Style.ListDisc)
+        assert window.numbered_action.isChecked() == (after[1] == QTextListFormat.Style.ListDecimal)
         window.undo_action.trigger()
         assert structure(window) == before
         window.redo_action.trigger()
         assert structure(window) == after
 
 
-def test_selected_quote_blocks_convert_to_one_top_level_list_undo_step(
+def test_selected_quote_blocks_exit_quote_when_list_is_added_in_one_undo_step(
     window: MainWindow,
 ) -> None:
     window.editor.setPlainText("one\ntwo\nthree")
@@ -446,6 +446,7 @@ def test_selected_quote_blocks_convert_to_one_top_level_list_undo_step(
     assert list_styles(window) == [None, None, None]
     window.redo_action.trigger()
     assert list_styles(window) == [QTextListFormat.Style.ListDecimal] * 2 + [None]
+    assert quote_levels(window) == [None, None, None]
 
 
 @pytest.mark.parametrize("level", [1, 2, 3])
@@ -458,13 +459,13 @@ def test_heading_survives_structural_application_and_removal(
     before_size = char_format(window, 1).fontPointSize()
     action = getattr(window, action_name)
     action.trigger()
-    assert headings(window) == [level]
-    assert char_format(window, 1).fontPointSize() == before_size
-    assert window.style_selector.currentIndex() == level
+    expected_heading = 0
+    assert headings(window) == [expected_heading]
+    assert char_format(window, 1).fontPointSize() != before_size
+    assert window.style_selector.currentIndex() == expected_heading
     action.trigger()
-    assert structure(window) == (level, None, None, 0)
-    assert char_format(window, 1).fontPointSize() == before_size
-    assert window.style_selector.currentIndex() == level
+    assert structure(window) == (expected_heading, None, None, 0)
+    assert window.style_selector.currentIndex() == expected_heading
 
 
 @pytest.mark.parametrize("level", [1, 2, 3])
@@ -475,7 +476,7 @@ def test_heading_survives_structural_application_and_removal(
         ("numbered_action", QTextListFormat.Style.ListDecimal),
     ],
 )
-def test_heading_list_marker_uses_heading_typography_and_list_removal_keeps_heading(
+def test_list_on_heading_normalizes_to_paragraph_and_undo_restores_heading(
     window: MainWindow, level: int, action_name: str, style: QTextListFormat.Style
 ) -> None:
     window.editor.setPlainText("Heading")
@@ -483,8 +484,8 @@ def test_heading_list_marker_uses_heading_typography_and_list_removal_keeps_head
     action = getattr(window, action_name)
     action.trigger()
     block = window.editor.document().begin()
-    expected_size = heading_point_size(window.editor, level)
-    assert block.blockFormat().headingLevel() == level
+    expected_size = heading_point_size(window.editor, 0)
+    assert block.blockFormat().headingLevel() == 0
     assert list_styles(window) == [style]
     # Qt draws native list markers with the block character format, not text fragments.
     assert block.charFormat().fontPointSize() == pytest.approx(expected_size)
@@ -492,7 +493,7 @@ def test_heading_list_marker_uses_heading_typography_and_list_removal_keeps_head
     assert window.editor.toPlainText() == "Heading"
 
     action.trigger()
-    assert headings(window) == [level]
+    assert headings(window) == [0]
     assert list_styles(window) == [None]
     assert block.charFormat().fontPointSize() == pytest.approx(expected_size)
     window.undo_action.trigger()
@@ -500,34 +501,33 @@ def test_heading_list_marker_uses_heading_typography_and_list_removal_keeps_head
     assert block.charFormat().fontPointSize() == pytest.approx(expected_size)
     window.redo_action.trigger()
     assert list_styles(window) == [None]
-    assert headings(window) == [level]
+    assert headings(window) == [0]
 
 
 @pytest.mark.parametrize("action_name", ["bullet_action", "numbered_action"])
-def test_changing_heading_in_list_keeps_native_list_and_undo_history(
+def test_changing_heading_in_list_removes_list_and_undo_restores_it(
     window: MainWindow, action_name: str
 ) -> None:
     window.editor.setPlainText("Title")
     getattr(window, action_name).trigger()
-    style = list_styles(window)
     for level in (1, 3, 0, 2):
         window.style_selector.setCurrentIndex(level)
         block = window.editor.document().begin()
         assert headings(window) == [level]
-        assert list_styles(window) == style
+        assert list_styles(window) == [None]
         assert block.charFormat().fontPointSize() == pytest.approx(
             heading_point_size(window.editor, level)
         )
     window.undo_action.trigger()
     assert headings(window) == [0]
-    assert list_styles(window) == style
+    assert list_styles(window) == [None]
     window.redo_action.trigger()
     assert headings(window) == [2]
-    assert list_styles(window) == style
+    assert list_styles(window) == [None]
 
 
 @pytest.mark.parametrize("action_name", ["bullet_action", "numbered_action"])
-def test_retyping_empty_heading_list_keeps_text_and_marker_typography(
+def test_retyping_empty_list_from_heading_uses_paragraph_typography(
     window: MainWindow, action_name: str
 ) -> None:
     window.style_selector.setCurrentIndex(1)
@@ -535,16 +535,16 @@ def test_retyping_empty_heading_list_keeps_text_and_marker_typography(
     QTest.keyClicks(window.editor, "Title")
     select(window, 0, 5)
     QTest.keyClick(window.editor, Qt.Key.Key_Delete)
-    assert headings(window) == [1]
+    assert headings(window) == [0]
     assert list_styles(window)[0] is not None
     QTest.keyClicks(window.editor, "Again")
     block = window.editor.document().begin()
-    expected_size = heading_point_size(window.editor, 1)
+    expected_size = heading_point_size(window.editor, 0)
     assert char_format(window, 1).fontPointSize() == pytest.approx(expected_size)
     assert block.charFormat().fontPointSize() == pytest.approx(expected_size)
 
 
-def test_profile_switch_keeps_heading_list_typography_and_history(window: MainWindow) -> None:
+def test_profile_switch_keeps_normalized_list_typography_and_history(window: MainWindow) -> None:
     window.editor.setPlainText("Title")
     window.style_selector.setCurrentIndex(2)
     window.numbered_action.trigger()
@@ -572,7 +572,7 @@ def test_profile_switch_keeps_heading_list_typography_and_history(window: MainWi
             window.current_path,
             document.begin().charFormat().fontPointSize(),
         ) == before
-        assert headings(window) == [2]
+        assert headings(window) == [0]
         assert list_styles(window) == [QTextListFormat.Style.ListDecimal]
         assert not document.isModified()
     window.undo_action.trigger()
@@ -592,7 +592,7 @@ def test_repeated_undo_redo_restores_text_structure_inline_format_and_toolbar(
     window.style_selector.setCurrentIndex(2)
     window.quote_action.trigger()
     window.bullet_action.trigger()
-    expected = ("one", (2, QTextListFormat.Style.ListDisc, None, 0), True, "H2")
+    expected = ("one", (0, QTextListFormat.Style.ListDisc, None, 0), True, "Paragraph")
 
     def snapshot() -> tuple[
         str, tuple[int, QTextListFormat.Style | None, int | None, int], bool, str
@@ -606,19 +606,14 @@ def test_repeated_undo_redo_restores_text_structure_inline_format_and_toolbar(
         )
 
     assert snapshot() == expected
-    for _ in range(3):
+    snapshots = [snapshot()]
+    while window.editor.document().isUndoAvailable():
         window.undo_action.trigger()
-        assert structure(window) == (2, None, 1, 1)
-        assert window.quote_action.isChecked()
-        window.undo_action.trigger()
-        assert structure(window) == (2, None, None, 0)
-        window.undo_action.trigger()
-        assert structure(window) == (0, None, None, 0)
-        window.undo_action.trigger()
-        assert snapshot() == ("one", (0, None, None, 0), False, "Paragraph")
-        for _ in range(4):
-            window.redo_action.trigger()
-        assert snapshot() == expected
+        snapshots.append(snapshot())
+    assert snapshots[-1] == ("one", (0, None, None, 0), False, "Paragraph")
+    for state in reversed(snapshots[:-1]):
+        window.redo_action.trigger()
+        assert snapshot() == state
 
 
 def test_quote_uses_builtin_top_level_property_and_toggles_selected_blocks(
@@ -642,17 +637,16 @@ def test_quote_uses_builtin_top_level_property_and_toggles_selected_blocks(
     assert window.editor.toPlainText() == "one\ntwo\nthree"
 
 
-def test_quote_enters_and_exits_without_changing_heading_or_inline_typography(
+def test_quote_normalizes_heading_and_blank_enter_exits_with_inline_mode(
     window: MainWindow,
 ) -> None:
     window.editor.setPlainText("Heading")
     window.style_selector.setCurrentIndex(2)
     select(window, 0, 7)
-    for action in (window.bold_action, window.italic_action, window.strike_action):
-        action.trigger()
     window.quote_action.trigger()
+    window.italic_action.trigger()
     before = char_format(window, 1)
-    assert headings(window) == [2]
+    assert headings(window) == [0]
     assert quote_levels(window) == [1]
     select(window, 7, 7)
     QTest.keyClick(window.editor, Qt.Key.Key_Return)
@@ -661,7 +655,7 @@ def test_quote_enters_and_exits_without_changing_heading_or_inline_typography(
     QTest.keyClick(window.editor, Qt.Key.Key_Return)
     assert quote_levels(window) == [1, None]
     assert window.editor.toPlainText() == "Heading\n"
-    assert headings(window)[0] == 2
+    assert headings(window)[0] == 0
     after = char_format(window, 1)
     assert after.fontPointSize() == before.fontPointSize()
     assert after.fontWeight() == before.fontWeight()
@@ -726,7 +720,7 @@ def test_cursor_sync_is_read_only_and_profiles_preserve_rich_history(window: Mai
     assert not window.bullet_action.isChecked()
     select(window, 2, 2)
     assert window.bold_action.isChecked()
-    assert window.style_selector.currentText() == "H2"
+    assert window.style_selector.currentText() == "Paragraph"
     assert not window.bullet_action.isChecked()
     assert window.quote_action.isChecked()
     cursor = window.editor.textCursor()
@@ -745,15 +739,22 @@ def test_cursor_sync_is_read_only_and_profiles_preserve_rich_history(window: Mai
         ) == before
         assert not document.isModified()
         assert window.current_path == path
-        assert headings(window)[0] == 2
+        assert headings(window)[0] == 0
         assert quote_levels(window)[0] == 1
     window.undo_action.trigger()
     assert quote_levels(window)[0] is None
     assert list_styles(window)[0] == QTextListFormat.Style.ListDisc
+    window.undo_action.trigger()
+    assert headings(window)[0] == 2
+    assert list_styles(window)[0] is None
     window.profile_actions["Lab"].trigger()
     assert document.isRedoAvailable()
     window.redo_action.trigger()
+    assert headings(window)[0] == 0
+    assert list_styles(window)[0] == QTextListFormat.Style.ListDisc
+    window.redo_action.trigger()
     assert quote_levels(window)[0] == 1
+    assert list_styles(window)[0] is None
 
 
 @pytest.mark.parametrize(
