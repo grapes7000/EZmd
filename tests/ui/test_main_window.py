@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QByteArray, QMimeData, QSaveFile, Qt, QTimer
+from PySide6.QtCore import QByteArray, QMimeData, QPoint, QSaveFile, Qt, QTimer
 from PySide6.QtGui import QFont, QKeySequence, QPalette, QTextCursor, QTextDocument, QTextFormat
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox, QToolButton
@@ -76,6 +76,156 @@ def test_window_has_a_usable_editor_and_typing_marks_it_modified(
     assert window.editor.toPlainText() == "Draft"
     assert window.editor.document().isModified()
     assert "Untitled *" in window.windowTitle()
+
+
+def test_toolbar_belongs_to_editor_pane_not_main_window_toolbar_area(window: MainWindow) -> None:
+    assert window.centralWidget() is window.splitter
+    assert window.splitter.widget(0) is window.sidebar
+    assert window.splitter.widget(1) is window.editor_pane
+    assert window.toolbar.parentWidget() is window.editor_pane
+    assert window.editor.parentWidget() is window.editor_pane
+    assert window.toolBarArea(window.toolbar) == Qt.ToolBarArea.NoToolBarArea
+
+
+def test_editor_pane_places_toolbar_above_editor(window: MainWindow) -> None:
+    pane_layout = window.editor_pane.layout()
+    assert pane_layout is not None
+    toolbar_item = pane_layout.itemAt(0)
+    content_item = pane_layout.itemAt(1)
+    editor_item = window.content_layout.itemAt(0)
+    assert toolbar_item is not None and toolbar_item.widget() is window.toolbar
+    assert content_item is not None and content_item.layout() is window.content_layout
+    assert editor_item is not None and editor_item.widget() is window.editor
+    assert window.toolbar.isVisible()
+    assert window.editor.isVisible()
+    assert window.toolbar.geometry().bottom() < window.editor.geometry().top()
+
+
+def test_sidebar_resizes_without_extending_toolbar_over_it(window: MainWindow) -> None:
+    window.resize(1000, 680)
+    window.splitter.setSizes([240, 760])
+    before = window.sidebar.width()
+    handle = window.splitter.handle(1)
+    assert handle is not None
+    start = QPoint(handle.width() // 2, handle.height() // 2)
+    QTest.mousePress(handle, Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(handle, pos=start + QPoint(40, 0))
+    QTest.mouseRelease(handle, Qt.MouseButton.LeftButton, pos=start + QPoint(40, 0))
+    assert window.sidebar.width() > before
+    assert window.editor_pane.geometry().left() > window.sidebar.geometry().right()
+    assert window.toolbar.width() == window.editor_pane.width()
+
+
+def test_sidebar_collapse_expand_and_hide_restore_previous_mode(window: MainWindow) -> None:
+    window.resize(1600, 680)
+    window.splitter.setSizes([280, 1320])
+    expanded_width = window.sidebar.width()
+    editor_left = window.editor_pane.geometry().left()
+    editor_width = window.editor_pane.width()
+    assert window.show_sidebar_action.isChecked()
+    QTest.mouseClick(window.sidebar_collapse_button, Qt.MouseButton.LeftButton)
+    assert window.sidebar.width() == 40
+    assert window.splitter.sizes()[0] == 40
+    assert window.editor_pane.geometry().left() == 40 + window.splitter.handleWidth()
+    assert window.editor_pane.width() > editor_width
+    assert not window.sidebar_header.isVisible()
+    assert window.sidebar_expand_button.isVisible()
+    assert window.editor.hasFocus()
+
+    window.show_sidebar_action.trigger()
+    assert not window.show_sidebar_action.isChecked()
+    assert not window.sidebar.isVisible()
+    assert window.editor_pane.width() > window.sidebar.width()
+    window.show_sidebar_action.trigger()
+    assert window.sidebar.isVisible()
+    assert window.sidebar_expand_button.isVisible()
+    assert window.sidebar.width() == 40
+    assert window.editor_pane.geometry().left() == 40 + window.splitter.handleWidth()
+
+    QTest.mouseClick(window.sidebar_expand_button, Qt.MouseButton.LeftButton)
+    assert window.sidebar_header.isVisible()
+    assert not window.sidebar_expand_button.isVisible()
+    assert abs(window.sidebar.width() - expanded_width) <= 2
+    assert abs(window.editor_pane.geometry().left() - editor_left) <= 2
+    assert window.editor.hasFocus()
+    window.show_sidebar_action.trigger()
+    window.show_sidebar_action.trigger()
+    assert window.sidebar_header.isVisible()
+    assert abs(window.sidebar.width() - expanded_width) <= 2
+
+
+def test_sidebar_controls_work_from_keyboard_and_do_not_strand_focus(window: MainWindow) -> None:
+    window.sidebar_collapse_button.setFocus()
+    QTest.keyClick(window.sidebar_collapse_button, Qt.Key.Key_Space)
+    assert window.sidebar_expand_button.isVisible()
+    assert window.editor.hasFocus()
+    window.sidebar_expand_button.setFocus()
+    QTest.keyClick(window.sidebar_expand_button, Qt.Key.Key_Space)
+    assert window.sidebar_header.isVisible()
+    assert window.editor.hasFocus()
+    window.sidebar_collapse_button.setFocus()
+    window.show_sidebar_action.trigger()
+    assert not window.sidebar.isVisible()
+    assert window.editor.hasFocus()
+
+
+def test_sidebar_changes_preserve_document_and_use_existing_themes(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    type_text(window, "Some writing")
+    path = tmp_path / "work.md"
+    save_to(monkeypatch, str(path))
+    assert window.save_document()
+    type_text(window, " more")
+    cursor = window.editor.textCursor()
+    cursor.setPosition(1)
+    cursor.setPosition(4, QTextCursor.MoveMode.KeepAnchor)
+    window.editor.setTextCursor(cursor)
+    document = window.editor.document()
+    before = (
+        window.editor.toPlainText(),
+        cursor.anchor(),
+        cursor.position(),
+        document.isModified(),
+        document.availableUndoSteps(),
+        window.current_path,
+    )
+    for profile in PROFILES:
+        window.profile_actions[profile].trigger()
+        for theme in THEMES:
+            window.theme_actions[theme].trigger()
+            colors = THEMES[theme]
+            assert colors.background_elevated in window.sidebar.styleSheet()
+            assert colors.focus_ring in window.sidebar.styleSheet()
+            assert colors.border in window.splitter.styleSheet()
+        window.sidebar_collapse_button.click()
+        window.sidebar_expand_button.click()
+        window.show_sidebar_action.trigger()
+        window.show_sidebar_action.trigger()
+        assert (
+            window.editor.toPlainText(),
+            window.editor.textCursor().anchor(),
+            window.editor.textCursor().position(),
+            document.isModified(),
+            document.availableUndoSteps(),
+            window.current_path,
+        ) == before
+    window.undo_action.trigger()
+    assert window.editor.toPlainText() == "Some writing"
+    window.redo_action.trigger()
+    assert window.editor.toPlainText() == "Some writing more"
+
+
+def test_narrow_window_keeps_editor_and_toolbar_usable(window: MainWindow) -> None:
+    window.resize(640, 480)
+    assert window.width() <= 640
+    assert window.editor.isVisible()
+    assert window.toolbar.isVisible()
+    assert window.editor_pane.width() > 0
+    assert window.editor.viewport().width() > 0
+    assert window.toolbar.width() == window.editor_pane.width()
+    window.sidebar_collapse_button.click()
+    assert window.editor_pane.width() > window.sidebar.width()
 
 
 def test_menus_and_toolbar_place_actions_and_share_native_undo_history(
