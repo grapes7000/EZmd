@@ -3,7 +3,15 @@
 from dataclasses import dataclass
 
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QFontInfo, QPalette
-from PySide6.QtWidgets import QApplication, QComboBox, QTextEdit, QToolBar, QVBoxLayout
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QSplitter,
+    QTextEdit,
+    QToolBar,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ezmd.ui.quote_editor import QuoteTextEdit
 
@@ -241,3 +249,22 @@ def apply_profile(
         f"selection-color: {colors.on_accent}; }}"
     )
     editor.set_quote_rail(colors.border_strong, profile.border_width, profile.control_padding)
+
+
+def apply_sidebar_style(sidebar: QWidget, splitter: QSplitter, name: str, colors: Colors) -> None:
+    """Style the writing shell without changing any document or editor state."""
+    profile = PROFILES[name]
+    sidebar.setStyleSheet(
+        f"QWidget#documentsSidebar {{ background: {colors.background_elevated}; }}"
+        f"QLabel#sidebarTitle {{ color: {colors.text_primary}; }}"
+        f"QToolButton#sidebarButton {{ min-height: {profile.control_height}px; "
+        f"padding: 0 {SPACE_4}px; border-radius: {profile.control_radius}px; "
+        f"border: {profile.border_width}px solid transparent; color: {colors.text_secondary}; }}"
+        f"QToolButton#sidebarButton:hover {{ background: {colors.surface_hover}; }}"
+        f"QToolButton#sidebarButton:focus {{ border-color: {colors.focus_ring}; }}"
+        f"QToolButton#sidebarButton:pressed {{ background: {colors.surface_active}; }}"
+    )
+    splitter.setStyleSheet(
+        f"QSplitter::handle:horizontal {{ background: {colors.background}; "
+        f"border-left: {profile.border_width}px solid {colors.border}; }}"
+    )
