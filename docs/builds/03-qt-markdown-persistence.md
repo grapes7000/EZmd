@@ -1,6 +1,8 @@
 # Build 03 — Qt Markdown persistence
 
-Status: implemented locally; owner manual acceptance and cross-platform CI pending.
+Status: implementation merged into `main`; final acceptance remains open because the Windows CI round-trip issue is unresolved.
+
+The merged implementation is the production persistence baseline. Linux and macOS CI have passed this contract. Windows CI still exposes a Build 03 Markdown round-trip problem and can time out after a blocking Save failure dialog. The owner has intentionally deferred that investigation while Build 04 continues. Do not weaken the round-trip safety contract merely to make that CI job green.
 
 ## User outcome
 

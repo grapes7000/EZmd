@@ -2,51 +2,63 @@
 
 This file answers one question: what is true in EZmd right now?
 
-## Completed
+## Production `main`
 
 ### Build 01 — Native editor shell
 
-Complete and merged. The app can create, open, edit, and safely save UTF-8 text files with unsaved-change protection.
+Complete and merged. The app can create, open, edit, and safely save UTF-8 text files with
+unsaved-change protection.
 
 ### Build 02 — Formatting toolbar
 
-Complete and merged. The live Qt document supports Paragraph/H1/H2/H3, bold, italic, strikethrough, top-level bullet and numbered lists, blockquotes, and native Undo/Redo.
-
-## Next approved slice
+Complete and merged. The live Qt document supports Paragraph/H1/H2/H3, bold, italic,
+strikethrough, top-level bullet and numbered lists, blockquotes, and native Undo/Redo.
 
 ### Build 03 — Qt Markdown persistence
 
-Implemented in the current working tree; owner manual acceptance and cross-platform CI are still
-required before it can be called complete.
+Implementation is merged into `main` and is the production persistence baseline.
 
-The slice uses Qt's native Markdown conversion, with one focused encoding for whitespace that
-Qt would otherwise delete:
+For `.md` and `.markdown`, EZmd uses Qt's native Markdown conversion, a narrow temporary
+whitespace encoding for content Qt would otherwise delete, and strict semantic verification before
+Save replaces a file. `.txt` remains plain text.
 
-    Markdown file
-    → QTextDocument.setMarkdown(...)
-    → normal visual editing
-    → QTextDocument.toMarkdown()
-    → Markdown file
+Build 03 is **not fully accepted** under its original completion rule because the Windows CI path
+still exposes a Markdown round-trip problem and can time out after a Save failure dialog blocks in
+offscreen CI. Linux and macOS passed. The owner has intentionally deferred the Windows
+investigation; it remains known technical/acceptance debt rather than the active feature task.
 
-The user should open a document, work visually, save it, reopen it, and see the same supported
-content and formatting without needing to know or interact with Markdown syntax. Save checks the
-native Qt conversion before replacing a Markdown file and reports a failure if content or
-formatting would change. Leading spaces and empty paragraphs are encoded on a temporary copy
-and restored when the document is opened.
+See `docs/builds/03-qt-markdown-persistence.md` for the persistence contract.
 
-See docs/builds/03-qt-markdown-persistence.md for the exact contract.
+## Active development — Build 04 Desktop workspace
 
-## Important current behavior
+Build 04 is one continuing desktop-workspace build. It intentionally combines:
 
-Until Build 03 is accepted and merged:
+- desktop shell and visual-system work;
+- ordinary desktop-editor completeness;
+- workspace/navigation features.
 
-- The in-progress Markdown implementation and its safety checks are in the working tree.
-- The documented Build 03 safe formatting profile is tested locally but awaits owner acceptance.
-- The only production dependency is PySide6.
-- Linux, macOS, and Windows are first-class targets.
-- Qt Widgets is the current UI technology.
-- There is no WebEngine, browser runtime, network client, database, plugin system, or Markdown parser dependency in production code.
+These are **not three sequential phases that must finish one at a time**. They may be interleaved
+when that produces the simplest useful next slice. Every implementation change must still be small,
+launchable, explicitly approved, and tested.
 
-## After Build 03
+Current stacked development state:
 
-The next work will move away from file-format experimentation and toward making EZmd feel like a complete, intuitive desktop application: desktop usability, stronger visual design, and then workspace features. Those directions are described in docs/BUILD_PLAN.md; they are not yet active implementation contracts.
+- `build/04-01-design-tokens` adds Widgets-native spacing/radius/control tokens, a Compact visual
+  profile, and built-in Light/Dark themes.
+- PR #8, **Add editor-pane layout and collapsible sidebar shell**, has been merged into
+  `build/04-01-design-tokens`. It moves the formatting toolbar into the editor pane and adds the
+  resizable/collapsible/hideable Documents sidebar shell.
+- That stacked Build 04 work is **not yet merged into `main`**.
+
+Document navigation itself is not implemented by the sidebar-shell slice.
+
+See `docs/builds/04-desktop-workspace.md` and `docs/UI_DIRECTION.md`.
+
+## Current technology boundaries
+
+- PySide6 is the only production dependency.
+- Linux, macOS, and Windows remain first-class targets.
+- Qt Widgets is the UI technology.
+- The live Qt `QTextDocument` remains the editable document model.
+- There is no WebEngine, browser runtime, network client, database, plugin system, or separate
+  Markdown parser dependency in production code.

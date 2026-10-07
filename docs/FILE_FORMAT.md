@@ -1,64 +1,94 @@
 # File format
 
-This document separates current production behavior from the approved Build 03 target.
+This document describes current production behavior on `main`.
 
-## Current behavior on main
+## Markdown-backed documents
 
-Until Build 03 is implemented, EZmd treats .md, .markdown, and .txt as UTF-8 plain text.
-
-Open:
-
-    file bytes
-    → UTF-8 text
-    → QTextEdit.setPlainText(...)
-
-Save:
-
-    QTextEdit.toPlainText()
-    → UTF-8
-    → safe QSaveFile replacement
-
-Writes normalize line endings to LF.
-
-Build 02 rich formatting is therefore temporary editor state and does not yet survive save/reopen.
-
-## Build 03 target
-
-For .md and .markdown, Qt's native Markdown support becomes the file boundary:
+For `.md` and `.markdown`, Qt's native Markdown support is the file boundary:
 
     UTF-8 Markdown text
     → QTextDocument.setMarkdown(...)
-    → visual QTextDocument editing
+    → restore EZmd whitespace encoding when present
+    → normal visual QTextDocument editing
+    → temporary whitespace encoding when necessary
     → QTextDocument.toMarkdown()
+    → temporary parse + semantic verification
     → UTF-8 safe write
 
-The normal user does not edit Markdown source. The file format exists underneath the visual editor.
+The normal user edits a visual document, not Markdown source.
 
-EZmd guarantees the features it exposes through its own editor controls, beginning with the Build 02 vocabulary: Paragraph/H1/H2/H3, bold, italic, strikethrough, bullets, numbered lists, and blockquotes.
+EZmd guarantees the features exposed by its own formatting controls within the tested safe profile:
+Paragraph/H1/H2/H3, bold, italic, strikethrough, top-level bullet and numbered lists, and
+blockquotes. Unsupported combinations are normalized by the editor or rejected by Save verification
+rather than silently written with changed meaning.
 
-EZmd does not promise universal compatibility with every Markdown extension. It also does not add a validator to reject unfamiliar syntax. Constructs outside the product's exposed feature set are best-effort Qt behavior until a future product feature explicitly adopts them.
+Qt may understand additional Markdown constructs, but those remain best-effort until EZmd
+explicitly adopts them as product features.
 
-.txt remains plain text in Build 03.
+## Whitespace preservation
+
+Qt Markdown drops some leading spaces and empty paragraphs.
+
+EZmd therefore uses one narrow persistence adapter:
+
+- Save may clone the live document and encode otherwise-lost leading spaces or empty/whitespace-only
+  paragraphs with reserved markers before calling Qt's Markdown writer.
+- Open restores those markers after Qt parses the Markdown.
+- Literal reserved markers are escaped.
+- The live editor document is not rewritten merely to serialize a file.
+
+This adapter is limited to whitespace preservation. It is not a custom Markdown parser or general
+compatibility layer.
+
+## Save verification
+
+Before replacing a Markdown file, EZmd reparses the serialized Markdown into a temporary
+`QTextDocument`, restores encoded whitespace, and compares supported meaning with the live
+document.
+
+The comparison covers visible text, heading level, list type, quote state, and
+Bold/Italic/Strikethrough runs.
+
+If verification would change supported meaning, Save fails and the existing file and live editor
+state remain intact.
+
+## Plain text
+
+`.txt` remains plain text:
+
+    Open → QTextEdit.setPlainText(...)
+    Save → QTextEdit.toPlainText()
+
+Rich formatting is not durable in a `.txt` file.
 
 ## Source spelling
 
-Build 03 does not promise byte-for-byte Markdown preservation. Qt may write equivalent Markdown differently after Save.
+EZmd does not promise byte-for-byte Markdown preservation. Qt may write equivalent Markdown
+punctuation differently after Save.
 
-The product promise is visible and semantic round-trip for EZmd-supported features, not preservation of the exact punctuation an external editor used.
+The product promise is visible and semantic round-trip for supported features, not preservation of
+the exact punctuation an external editor used.
 
 ## User-facing naming
 
 Normal in-app language should say "document", not "Markdown document".
 
-The editor must not expose Markdown punctuation as the normal writing surface. Where practical, the window title should display the document name without advertising the .md or .markdown suffix. Operating-system file dialogs may still display real filenames and extensions according to the platform and user settings.
+The editor does not expose Markdown punctuation as the normal writing surface. Where practical, the
+window title displays the document name without advertising the `.md` or `.markdown` suffix.
+Operating-system file dialogs may still display real filenames and extensions.
 
 ## Safety guarantees
 
 - Invalid UTF-8 is reported instead of silently replacing bytes.
 - A failed read does not destroy the document already open.
 - A failed write must not truncate the previous file.
-- A failed save must not mark unsaved work clean.
+- A failed Save must not mark unsaved work clean.
 - Opening Markdown must not leave conversion steps in user Undo history.
 - Saving must not mutate the live cursor, selection, formatting, or Undo history.
 - Paths with Unicode and spaces remain supported.
 - Unsaved changes are confirmed before destructive New/Open/Close operations.
+
+## Known acceptance debt
+
+Build 03's Windows CI Markdown round-trip problem remains unresolved and intentionally deferred.
+Do not weaken the semantic Save guarantee to hide that problem.
