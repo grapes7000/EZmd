@@ -30,10 +30,12 @@ from ezmd.ui import formatting, markdown_whitespace
 from ezmd.ui.quote_editor import QuoteTextEdit
 from ezmd.ui.visual_profiles import (
     DEFAULT_PROFILE,
+    DEFAULT_THEME,
     PROFILES,
+    THEMES,
     apply_profile,
     heading_point_size,
-    system_colors,
+    theme_palette,
 )
 
 
@@ -125,6 +127,18 @@ class MainWindow(QMainWindow):
             self.profile_actions[name] = action
         self.profile_actions[DEFAULT_PROFILE].setChecked(True)
 
+        theme_menu = view_menu.addMenu("Color Theme")
+        theme_group = QActionGroup(self)
+        self.theme_actions: dict[str, QAction] = {}
+        for name in THEMES:
+            action = QAction(name, self)
+            action.setCheckable(True)
+            theme_group.addAction(action)
+            theme_menu.addAction(action)
+            action.triggered.connect(lambda _checked=False, theme=name: self._change_theme(theme))
+            self.theme_actions[name] = action
+        self.theme_actions[DEFAULT_THEME].setChecked(True)
+
         self.undo_action.setEnabled(False)
         self.redo_action.setEnabled(False)
         self._connect_document_signals(self.editor.document())
@@ -176,8 +190,8 @@ class MainWindow(QMainWindow):
         self.editor.selectionChanged.connect(self._sync_formatting)
         self.editor.currentCharFormatChanged.connect(self._sync_formatting)
         self.editor.textChanged.connect(self._sync_formatting)
-        self.colors = system_colors(self.palette())
-        self._change_profile(DEFAULT_PROFILE)
+        self.profile_name = DEFAULT_PROFILE
+        self._change_theme(DEFAULT_THEME)
         self._sync_formatting()
         self._update_title()
         self.editor.setFocus()
@@ -275,6 +289,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{name}{' *' if modified else ''} — EZmd")
 
     def _change_profile(self, name: str) -> None:
+        self.profile_name = name
         apply_profile(
             self.toolbar,
             self.editor,
@@ -283,6 +298,11 @@ class MainWindow(QMainWindow):
             name,
             self.colors,
         )
+
+    def _change_theme(self, name: str) -> None:
+        self.colors = THEMES[name]
+        self.setPalette(theme_palette(self.palette(), self.colors))
+        self._change_profile(self.profile_name)
 
     def _confirm_unsaved_changes(self) -> bool:
         if not self.editor.document().isModified():

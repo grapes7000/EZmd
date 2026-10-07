@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QByteArray, QMimeData, QSaveFile, Qt, QTimer
-from PySide6.QtGui import QFont, QKeySequence, QTextCursor, QTextDocument, QTextFormat
+from PySide6.QtGui import QFont, QKeySequence, QPalette, QTextCursor, QTextDocument, QTextFormat
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox, QToolButton
 from pytestqt.qtbot import QtBot
 
 from ezmd.ui.main_window import MainWindow
-from ezmd.ui.visual_profiles import DEFAULT_PROFILE, PROFILES
+from ezmd.ui.visual_profiles import DEFAULT_PROFILE, DEFAULT_THEME, PROFILES, THEMES
 
 
 @pytest.fixture
@@ -108,6 +108,11 @@ def test_menus_and_toolbar_place_actions_and_share_native_undo_history(
     ):
         assert all(action in menus[name].actions() for action in expected)
     assert "Visual Profile" in [action.text() for action in menus["View"].actions()]
+    theme_menu = next(
+        action.menu() for action in menus["View"].actions() if action.text() == "Color Theme"
+    )
+    assert isinstance(theme_menu, QMenu)
+    assert theme_menu.actions() == list(window.theme_actions.values())
 
     type_text(window, "Hello")
     window.undo_action.trigger()
@@ -737,7 +742,7 @@ def test_live_profiles_keep_document_cursor_selection_undo_and_path(
     before_cursor = (cursor.anchor(), cursor.position())
     document = window.editor.document()
     undo_steps = document.availableUndoSteps()
-    for name in ("Lab", "QTemp", "Focus"):
+    for name in PROFILES:
         window.profile_actions[name].trigger()
         assert window.profile_actions[name].isChecked()
         margin = PROFILES[name].content_margin
@@ -757,7 +762,7 @@ def test_live_profiles_keep_document_cursor_selection_undo_and_path(
     undo_steps = document.availableUndoSteps()
     assert document.isRedoAvailable()
     modified = document.isModified()
-    for name in ("QTemp", "Lab", "Focus"):
+    for name in ("QTemp", "Lab", "Compact", "Focus"):
         window.profile_actions[name].trigger()
         assert window.editor.toPlainText() == after_undo
         assert document.isModified() == modified
@@ -767,14 +772,84 @@ def test_live_profiles_keep_document_cursor_selection_undo_and_path(
     assert window.editor.toPlainText() == before
 
 
-def test_focus_buttons_are_quiet_at_rest_while_other_profiles_retain_boundaries(
+def test_compact_profile_uses_template_geometry(window: MainWindow) -> None:
+    compact = PROFILES["Compact"]
+    assert (
+        compact.toolbar_gap,
+        compact.toolbar_padding,
+        compact.content_margin,
+        compact.control_height,
+        compact.control_padding,
+        compact.control_radius,
+        compact.editor_radius,
+        compact.editor_padding,
+        compact.border_width,
+    ) == (6, 6, 20, 30, 8, 4, 6, 12, 1)
+    window.profile_actions["Compact"].trigger()
+    assert window.content_layout.contentsMargins().left() == 20
+    assert "min-height: 30px" in window.toolbar.styleSheet()
+    assert "border-radius: 6px" in window.editor.styleSheet()
+
+
+def test_builtin_color_themes_switch_without_editing_the_document(window: MainWindow) -> None:
+    assert window.theme_actions[DEFAULT_THEME].isChecked()
+    assert not window.theme_actions["Light"].isChecked()
+    window.editor.setPlainText("Writing")
+    cursor = window.editor.textCursor()
+    cursor.select(QTextCursor.SelectionType.Document)
+    window.editor.setTextCursor(cursor)
+    window.bold_action.trigger()
+    document = window.editor.document()
+    before = (
+        window.editor.toPlainText(),
+        document.availableUndoSteps(),
+        document.isModified(),
+        window.editor.textCursor().anchor(),
+        window.editor.textCursor().position(),
+        window.bold_action.isChecked(),
+    )
+    window.profile_actions["Compact"].trigger()
+    for name in ("Light", "Dark", "Light"):
+        window.theme_actions[name].trigger()
+        colors = THEMES[name]
+        assert window.theme_actions[name].isChecked()
+        assert sum(action.isChecked() for action in window.theme_actions.values()) == 1
+        assert window.profile_actions["Compact"].isChecked()
+        palette = window.palette()
+        assert palette.color(QPalette.ColorRole.Window).name().upper() == colors.background
+        assert palette.color(QPalette.ColorRole.Base).name().upper() == colors.surface
+        assert palette.color(QPalette.ColorRole.Highlight).name().upper() == colors.selection
+        assert (
+            palette.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text).name().upper()
+            == colors.text_muted
+        )
+        assert colors.background_elevated in window.toolbar.styleSheet()
+        assert colors.surface_active in window.toolbar.styleSheet()
+        assert colors.surface_alternate in window.style_selector.styleSheet()
+        assert colors.selection in window.editor.styleSheet()
+        assert (
+            window.editor.toPlainText(),
+            document.availableUndoSteps(),
+            document.isModified(),
+            window.editor.textCursor().anchor(),
+            window.editor.textCursor().position(),
+            window.bold_action.isChecked(),
+        ) == before
+    window.undo_action.trigger()
+    assert not window.bold_action.isChecked()
+    window.redo_action.trigger()
+    assert window.bold_action.isChecked()
+
+
+def test_focus_and_compact_buttons_are_quiet_at_rest_while_other_profiles_retain_boundaries(
     window: MainWindow,
 ) -> None:
     assert PROFILES["Focus"].quiet_buttons_at_rest
+    assert PROFILES["Compact"].quiet_buttons_at_rest
     assert not PROFILES["Lab"].quiet_buttons_at_rest
     assert not PROFILES["QTemp"].quiet_buttons_at_rest
 
-    for name in ("Lab", "QTemp", "Focus"):
+    for name in PROFILES:
         window.profile_actions[name].trigger()
         assert window.profile_actions[name].isChecked()
         assert not window.editor.document().isModified()
