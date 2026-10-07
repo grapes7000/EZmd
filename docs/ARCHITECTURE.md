@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the in-progress Build 03 boundary and the one-document architecture.
+This document describes the current production architecture on `main` and the one-document editing boundary.
 
 ## Runtime
 
@@ -29,9 +29,9 @@ The editor is a QTextEdit subclass backed by Qt's single QTextDocument. There is
 - Normal editing must not depend on WebEngine, QML/Qt Quick, or network clients.
 - Add a production module only when it has one clear responsibility that improves readability.
 
-## Build 03 persistence boundary
+## Markdown persistence boundary
 
-Build 03 keeps the same single-document architecture.
+The merged Build 03 implementation keeps the same single-document architecture.
 
 For .md and .markdown:
 
@@ -63,7 +63,7 @@ with Bold and Italic. A failed Save still protects any real text or formatting l
 reliably preserve consecutive heading-list items or some adjacent quoted-list boundaries, so
 those combinations are unavailable through the toolbar.
 
-Build 03 must not add:
+The persistence layer must not add:
 
 - a general-purpose Markdown parser or serializer;
 - a synchronized Markdown source buffer;

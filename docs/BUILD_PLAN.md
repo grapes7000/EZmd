@@ -1,8 +1,10 @@
 # Build plan
 
-EZmd is developed in small launchable slices. A build should add one visible capability, keep the application runnable, add focused tests, and stop.
+EZmd is developed in small launchable slices. A build may describe a larger product direction, but
+each implementation step should add one coherent capability, keep the application runnable, add
+focused tests, and stop.
 
-## Completed
+## Production baseline
 
 ### Build 01 — Native editor shell
 
@@ -10,57 +12,71 @@ New/Open/Save, safe UTF-8 files, unsaved-change protection, native window, and v
 
 ### Build 02 — Formatting toolbar
 
-Paragraph/H1/H2/H3, bold, italic, strikethrough, bullet and numbered lists, blockquotes, and native Undo/Redo.
-
-## Next
+Paragraph/H1/H2/H3, bold, italic, strikethrough, bullet and numbered lists, blockquotes, and native
+Undo/Redo.
 
 ### Build 03 — Qt Markdown persistence
 
-Make the existing visual document durable using Qt's native Markdown reader and writer.
+Merged into `main`. The existing visual document is durable through Qt's native Markdown reader
+and writer, with narrow whitespace preservation and strict semantic Save verification.
 
-The user-facing goal is deliberately simple:
+Build 03's implementation is the production baseline, but its original acceptance checklist is not
+fully closed because the Windows CI round-trip issue remains deferred. See
+`docs/builds/03-qt-markdown-persistence.md`.
 
-> Open a document, work on it visually, save it, reopen it, and see the same supported content and formatting without needing to know that Markdown is involved.
+## Active — Build 04 Desktop workspace
 
-Exact implementation and acceptance requirements are in docs/builds/03-qt-markdown-persistence.md.
+Build 04 evolves EZmd from a durable one-document editor into a complete native writing workspace.
 
-Build 03 does not expand the toolbar, add Markdown syntax UI, add compatibility code for every Markdown flavor, or introduce another parser.
+The owner treats the following as parts of the **same build**, not as mandatory sequential passes:
 
-## Direction after Build 03
+### Shell and visual system
 
-These are planning areas, not active implementation contracts.
+- compact semantic design tokens and built-in themes;
+- editor-pane ownership for the formatting strip;
+- resizable/collapsible/hideable sidebar shell;
+- centered page-like writing surface;
+- application/menu hierarchy;
+- development/status strip;
+- continued visual polish discovered through use.
 
-### Desktop completeness pass
+### Desktop completeness
 
-Before adding advanced knowledge-management features, make the application behave like a complete desktop editor. Candidate work includes normal editing commands, Save As, predictable shortcuts, recent/open flows, drag/drop where useful, links behaving naturally, clear feedback, sensible dialogs, and other small expectations discovered through real use.
+Candidate slices include:
 
-This pass should be broken into small slices rather than one large rewrite.
+- normal editing commands;
+- Save As;
+- predictable shortcuts;
+- recent/open flows;
+- drag/drop where useful;
+- links behaving naturally;
+- clear feedback and sensible dialogs;
+- other small desktop expectations found through real use.
 
-### UI design and polish pass
+### Workspace and navigation
 
-Define a coherent visual and interaction system for the application.
+Candidate slices include:
 
-Use Figma if useful to explore:
-
-- overall window layout;
-- toolbar/menu hierarchy;
-- typography and spacing;
-- sidebar/workspace layouts;
-- empty states;
-- dialogs and lightweight feedback;
-- interaction flows.
-
-Figma designs are references for the native Qt implementation, not a reason to introduce a web runtime or generated UI architecture.
-
-### Workspace features
-
-After the basic editor feels complete, add organization and navigation in small slices. Likely areas include:
-
-- a simple collapsible and toggleable document sidebar;
-- document navigation;
+- document navigation inside the sidebar shell;
 - full-text search;
 - quick open;
 - links and link navigation;
-- backlinks or related-document features only when the simpler linking workflow exists first.
+- backlinks or related-document features after the simpler linking workflow exists.
 
-Do not implement these from this roadmap alone. Each receives its own precise build document when it becomes the next approved slice.
+These areas may be interleaved. For example, a sidebar shell can be refined while Save As or a
+small navigation capability is added. Do not wait for one category to be declared "finished" before
+touching another if the next approved slice is smaller and more useful elsewhere.
+
+## Current Build 04 implementation state
+
+The active work is stacked off `main`:
+
+1. **04.01 — design tokens/themes** on `build/04-01-design-tokens`.
+2. **04.02 — editor pane + sidebar shell**, merged into that branch through PR #8.
+
+The stacked branch is not yet production `main`.
+
+No later candidate in this roadmap is automatically approved for implementation. The owner chooses
+the next focused slice, and that task defines its exact behavior and acceptance criteria.
+
+See `docs/builds/04-desktop-workspace.md` and `docs/UI_DIRECTION.md`.
