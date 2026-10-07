@@ -151,3 +151,42 @@ def test_toolbar_formatting_survives_save_and_reopen(
     )
     assert not reopened.isModified()
     assert not reopened.isUndoAvailable()
+
+
+def test_switching_color_theme_preserves_markdown_save_and_open(
+    qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = MainWindow()
+    qtbot.addWidget(
+        window, before_close_func=lambda widget: widget.editor.document().setModified(False)
+    )
+    window.show()
+    window.editor.setPlainText("A note")
+    cursor = window.editor.textCursor()
+    cursor.select(QTextCursor.SelectionType.Document)
+    window.editor.setTextCursor(cursor)
+    window.bold_action.trigger()
+    path = tmp_path / "note.md"
+
+    def selected(*_args: object) -> tuple[str, str]:
+        return str(path), ""
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", selected)
+    assert window.save_document()
+    saved = path.read_bytes()
+    document = window.editor.document()
+    undo_steps = document.availableUndoSteps()
+    for name in ("Light", "Dark"):
+        window.theme_actions[name].trigger()
+        assert not document.isModified()
+        assert document.availableUndoSteps() == undo_steps
+        assert window.save_document()
+        assert path.read_bytes() == saved
+
+    window.new_document()
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", selected)
+    window.open_document()
+    assert window.editor.toPlainText() == "A note"
+    assert window.editor.document().begin().begin().fragment().charFormat().fontWeight() >= (
+        QFont.Weight.Bold
+    )
